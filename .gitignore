@@ -31,3 +31,4 @@ __pycache__/
 .venv/
 venv/
 env/
+test_*.py
