@@ -1,5 +1,4 @@
 import type { MemoryActivity } from '../types'
-import { TAG_ICONS } from '../lib/constants'
 
 interface Props {
   activities: MemoryActivity[]
