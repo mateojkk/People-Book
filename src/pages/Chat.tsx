@@ -12,6 +12,8 @@ export default function Chat() {
   const account = useCurrentAccount()
   const { connectionStatus } = useCurrentWallet()
   const [userName, setUserName] = useState<string | null>(null)
+  const [memwalAccountId, setMemwalAccountId] = useState<string | null>(null)
+  const [memwalPrivateKey, setMemwalPrivateKey] = useState<string | null>(null)
 
   useEffect(() => {
     if (connectionStatus === 'connecting') return
@@ -22,9 +24,14 @@ export default function Chat() {
       }, 500)
       return () => clearTimeout(timeoutId)
     } else {
-      const saved = localStorage.getItem(`username_${account.address}`)
-      if (saved) {
-        setUserName(saved)
+      const savedName = localStorage.getItem(`username_${account.address}`)
+      const savedAccountId = localStorage.getItem(`memwal_account_${account.address}`)
+      const savedPrivateKey = localStorage.getItem(`memwal_key_${account.address}`)
+      
+      if (savedName && savedAccountId && savedPrivateKey) {
+        setUserName(savedName)
+        setMemwalAccountId(savedAccountId)
+        setMemwalPrivateKey(savedPrivateKey)
       } else {
         navigate('/login')
       }
@@ -47,7 +54,9 @@ export default function Chat() {
   const initialMessages = activeSession?.messages || []
 
   const { messages, loading, sendMessage } = useChat(
-    userName, 
+    userName,
+    memwalAccountId,
+    memwalPrivateKey,
     activeSessionId,
     initialMessages, 
     (newMessages) => {

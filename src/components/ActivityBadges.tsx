@@ -14,7 +14,7 @@ export default function ActivityBadges({ activities }: Props) {
 
   return (
     <div className="message-activities">
-      {visibleActivities.map((act, i) => {
+      {visibleActivities.map((act) => {
         if (act.type === 'recall') {
           // Stealth mode: do not display memory recall badges in the UI
           return null

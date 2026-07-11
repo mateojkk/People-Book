@@ -4,6 +4,8 @@ import { uid } from '../lib/constants'
 
 export function useChat(
   userName: string | null, 
+  memwalAccountId: string | null,
+  memwalPrivateKey: string | null,
   sessionId: string | null,
   initialMessages: ChatMessage[] = [],
   onMessagesChange?: (messages: ChatMessage[]) => void
@@ -90,7 +92,13 @@ export function useChat(
       const response = await fetch('/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_name: userName, message: text.trim(), history }),
+        body: JSON.stringify({ 
+          user_name: userName, 
+          memwal_account_id: memwalAccountId,
+          memwal_private_key: memwalPrivateKey,
+          message: text.trim(), 
+          history 
+        }),
       })
 
       if (!response.ok || !response.body) throw new Error('Server error')
@@ -163,7 +171,7 @@ export function useChat(
         prev.map((m) => (m.streaming ? { ...m, streaming: false } : m))
       )
     }
-  }, [loading, userName, addMemoryEntry])
+  }, [loading, userName, memwalAccountId, memwalPrivateKey, addMemoryEntry])
 
   return { messages, memoryEntries, loading, sendMessage }
 }

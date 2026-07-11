@@ -17,20 +17,8 @@ app = FastAPI(title="Luna — Your Walrus Copilot")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # ── MemWal ─────────────────────────────────────────────────────────────────────
-try:
-    from memwal import MemWal
-
-    memwal = MemWal.create(
-        key=os.environ["MEMWAL_PRIVATE_KEY"],
-        account_id=os.environ["MEMWAL_ACCOUNT_ID"],
-        server_url=os.environ.get("MEMWAL_SERVER_URL", "https://relayer.memory.walrus.xyz"),
-    )
-    MEMWAL_AVAILABLE = True
-    print("✅ Walrus Memory connected")
-except Exception as e:
-    print(f"⚠️  Walrus Memory unavailable: {e}")
-    MEMWAL_AVAILABLE = False
-    memwal = None
+# We no longer initialize MemWal globally since credentials come from the client.
+MEMWAL_AVAILABLE = True
 
 groq_client = AsyncGroq(api_key=os.environ.get("GROQ_API_KEY", ""))
 MODEL = "llama-3.3-70b-versatile"
@@ -102,6 +90,8 @@ class ChatRequest(BaseModel):
     user_name: str = "Anonymous"
     message: str
     history: list[ChatMessage] = []
+    memwal_account_id: str | None = None
+    memwal_private_key: str | None = None
 
 def sse(data: dict) -> str:
     return f"data: {json.dumps(data)}\n\n"
@@ -110,13 +100,26 @@ async def pipeline(req: ChatRequest) -> AsyncGenerator[str, None]:
     # ── 1. Recall from Walrus Memory ──────────────────────────────────────────
     yield sse({"type": "agent_status", "agent": "synthesis", "status": "running", "label": "Recalling memories…"})
 
-    # Derive a stable per-user namespace
-    user_namespace = f"{req.user_name.lower().replace(' ', '_')}-personal-agent"
+    # Use the global namespace so all chats share the same memory
+    user_namespace = "personal-agent"
     
-    memories = []
-    if MEMWAL_AVAILABLE and memwal:
+    # Initialize request-scoped MemWal client
+    req_memwal = None
+    if MEMWAL_AVAILABLE and req.memwal_account_id and req.memwal_private_key:
         try:
-            result = await memwal.recall(req.message, limit=12, namespace=user_namespace)
+            from memwal import MemWal
+            req_memwal = MemWal.create(
+                key=req.memwal_private_key,
+                account_id=req.memwal_account_id,
+                server_url=os.environ.get("MEMWAL_SERVER_URL", "https://relayer.memory.walrus.xyz"),
+            )
+        except Exception as e:
+            print(f"Failed to init user memwal: {e}")
+
+    memories = []
+    if req_memwal:
+        try:
+            result = await req_memwal.recall(req.message, limit=12, namespace=user_namespace)
             if result.results:
                 memories = [r.text for r in result.results]
         except Exception as e:
@@ -166,12 +169,12 @@ async def pipeline(req: ChatRequest) -> AsyncGenerator[str, None]:
                     
                 if fn == "save_memory":
                     text_to_save = args.get("text", "")
-                    user_namespace = f"{req.user_name.lower().replace(' ', '_')}-personal-agent"
+                    user_namespace = "personal-agent"
                     yield sse({"type": "agent_status", "agent": "synthesis", "status": "running", "label": "Writing memory…"})
                     
-                    if MEMWAL_AVAILABLE and memwal:
+                    if req_memwal:
                         try:
-                            await memwal.remember(text_to_save, namespace=user_namespace)
+                            await req_memwal.remember(text_to_save, namespace=user_namespace)
                         except Exception as e:
                             print(f"Memory write error: {e}")
                             

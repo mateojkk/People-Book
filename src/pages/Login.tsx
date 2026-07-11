@@ -18,9 +18,11 @@ export default function Login() {
     }
   }, [account, navigate])
 
-  const handleUsernamePicked = (name: string) => {
+  const handleUsernamePicked = (name: string, accountId: string, privateKey: string) => {
     if (account) {
       localStorage.setItem(`username_${account.address}`, name)
+      localStorage.setItem(`memwal_account_${account.address}`, accountId)
+      localStorage.setItem(`memwal_key_${account.address}`, privateKey)
       navigate('/')
     }
   }

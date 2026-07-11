@@ -32,3 +32,5 @@ __pycache__/
 venv/
 env/
 test_*.py
+submission.md
+demo_script.md
