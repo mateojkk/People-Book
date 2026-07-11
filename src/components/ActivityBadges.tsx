@@ -6,7 +6,8 @@ interface Props {
 
 export default function ActivityBadges({ activities }: Props) {
   const visibleActivities = activities.filter(act => {
-    if (act.type === 'recall' && act.count === 0) return false
+    // Stealth mode: do not display memory recall or write badges in the UI
+    if (act.type === 'recall' || act.type === 'memory_write') return false
     return true
   })
 
