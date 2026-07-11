@@ -8,11 +8,13 @@ export default function Login() {
   const account = useCurrentAccount()
 
   useEffect(() => {
-    // If we're on the login page but the user has already picked a username,
+    // If we're on the login page but the user has already completed setup,
     // we should redirect them to the chat page.
     if (account) {
-      const saved = localStorage.getItem(`username_${account.address}`)
-      if (saved) {
+      const savedName = localStorage.getItem(`username_${account.address}`)
+      const savedAccountId = localStorage.getItem(`memwal_account_${account.address}`)
+      const savedPrivateKey = localStorage.getItem(`memwal_key_${account.address}`)
+      if (savedName && savedAccountId && savedPrivateKey) {
         navigate('/')
       }
     }
