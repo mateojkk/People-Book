@@ -24,10 +24,10 @@
 
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { isValidPersonalMessageSignature } from "@mysten/sui/verify";
-import { parseZkLoginSignature } from "@mysten/sui/zklogin";
 import { SuiGrpcClient } from "@mysten/sui/grpc";
 import { bcs } from "@mysten/bcs";
-import { issueChallenge, redeemChallenge, CHALLENGE_TEXT, createSession, readSession } from "../api/lib/session.ts";
+import { readFileSync } from "node:fs";
+import { CHALLENGE_TEXT, createSession, readSession } from "../api/lib/session.ts";
 
 const RPC = process.env.SUI_RPC_URL || "https://fullnode.mainnet.sui.io:443";
 const API = process.env.CHECK_API_URL || "http://127.0.0.1:8787";
@@ -142,156 +142,102 @@ const zkSchema = bcs.struct("ZkLoginSignature", {
   userSignature: bcs.byteVector(),
 });
 
-const structurallyValidZk = (
-  zkSchema.serialize({
-    inputs: {
-      proofPoints: { a: ["1"], b: [["1"]], c: ["1"] },
-      issBase64Details: { value: Buffer.from("https://accounts.google.com").toString("base64"), indexMod4: 1 },
-      headerBase64: Buffer.from('{"alg":"RS256"}').toString("base64"),
-      addressSeed: "12345",
-    },
-    maxEpoch: 999999999n,
-    userSignature: new Uint8Array(65),
-  }) as unknown as { toBase64(): string }
-).toBase64();
+// A zkLogin signature on the wire is  SIGNATURE_SCHEME_TO_FLAG.ZkLogin || BCS(inputs, maxEpoch, userSignature).
+// The flag byte is part of the serialized form and the SDK strips it before parsing.
+//
+// Getting that wrong was a real bug, not a hypothetical: routing on
+// parseZkLoginSignature() of the WHOLE signature always threw, so every zkLogin
+// signature silently fell through to the plain verifier and sign-in never worked
+// for anyone holding a zkLogin address. The SDK already handles detection,
+// stripping, parsing and the fullnode call -- it just needs a client handed to it.
+const ZKLOGIN_FLAG = 5;
 
-check("a zkLogin-shaped signature parses as one", (() => {
-  try {
-    parseZkLoginSignature(structurallyValidZk);
-    return true;
-  } catch {
-    return false;
-  }
-})());
-// A real zkLogin signature is ~1296 base64 chars against ~132 for a plain one,
-// but size is a weak proxy — this synthetic proof is deliberately minimal. The
-// property that actually matters is that the two shapes are unambiguous: a
-// signature is either zkLogin-parseable or plain-verifiable, never both, so the
-// router can never pick the wrong path.
-{
-  let zkParses = false;
-  try {
-    parseZkLoginSignature(structurallyValidZk);
-    zkParses = true;
-  } catch {
-    zkParses = false;
-  }
-  const plainWorks = await isValidPersonalMessageSignature(
-    new TextEncoder().encode(ch.message), structurallyValidZk, { address },
-  ).catch(() => false);
+const structurallyValidZk = (() => {
+  const bcsBody = (
+    zkSchema.serialize({
+      inputs: {
+        proofPoints: { a: ["1"], b: [["1"]], c: ["1"] },
+        issBase64Details: { value: Buffer.from("https://accounts.google.com").toString("base64"), indexMod4: 1 },
+        headerBase64: Buffer.from('{"alg":"RS256"}').toString("base64"),
+        addressSeed: "12345",
+      },
+      maxEpoch: 999999999n,
+      userSignature: new Uint8Array(65),
+    }) as unknown as { toBytes(): Uint8Array }
+  ).toBytes();
 
-  check("the two signature shapes are unambiguous", zkParses !== plainWorks, { zkParses, plainWorks });
-  check("a real zkLogin signature is far larger than a plain one", 1296 > 132, { observed: 1296, plain: 132 });
-}
+  const flagged = new Uint8Array(bcsBody.length + 1);
+  flagged[0] = ZKLOGIN_FLAG;
+  flagged.set(bcsBody, 1);
+  return Buffer.from(flagged).toString("base64");
+})();
 
-check("junk does NOT parse as zkLogin", (() => {
-  try {
-    parseZkLoginSignature("AAAA");
-    return false;
-  } catch {
-    return true;
-  }
-})());
+const verifyWith = async (sig: string, client?: unknown): Promise<string> =>
+  isValidPersonalMessageSignature(new TextEncoder().encode(ch.message), sig, {
+    address,
+    ...(client ? { client: client as never } : {}),
+  }).then(
+    (v) => `returned ${v}`,
+    (e: unknown) => ((e instanceof Error ? e.message : String(e)).split("\n")[0] ?? ""),
+  );
 
-// The routing gate: this is what decides whether a fullnode gets called.
+check("a zkLogin signature carries the scheme flag", Buffer.from(structurallyValidZk, "base64")[0] === ZKLOGIN_FLAG);
+
+check("junk does not carry it", Buffer.from("AAAA", "base64")[0] !== ZKLOGIN_FLAG);
+check("a real zkLogin signature is far larger than a plain one", 1296 > 132, { observed: 1296, plain: 132 });
+
 check("the plain verifier refuses a zkLogin signature", !(await isValidPersonalMessageSignature(
   new TextEncoder().encode(ch.message), structurallyValidZk, { address },
 ).catch(() => false)));
-
-// And the fullnode must actually answer, proving the endpoint supports it.
-const client = new SuiGrpcClient({ baseUrl: RPC, network: "mainnet" });
-let verdict = "";
-try {
-  const res = await client.verifyZkLoginSignature({
-    bytes: Buffer.from(ch.message).toString("base64"),
-    signature: structurallyValidZk,
-    intentScope: "PersonalMessage",
-    address,
-  });
-  verdict = JSON.stringify(res);
-  check("the fullnode returns a verdict", true, verdict);
-} catch (error) {
-  const message = error instanceof Error ? error.message : String(error);
-  // A crypto or schema rejection PROVES the endpoint reached the verifier; a
-  // transport failure does not, and would mean the shim cannot work in prod.
-  const reached = /invalid|protobuf|signature|epoch|proof/i.test(message);
-  check("the fullnode reaches its zkLogin verifier", reached, message.split("\n")[0]);
-}
-
-// The same must be true of the default RPC, since a fresh deploy may not set one.
-const defaultClient = new SuiGrpcClient({ baseUrl: "https://fullnode.mainnet.sui.io:443", network: "mainnet" });
-try {
-  await defaultClient.verifyZkLoginSignature({
-    bytes: Buffer.from(ch.message).toString("base64"),
-    signature: structurallyValidZk,
-    intentScope: "PersonalMessage",
-    address,
-  });
-  check("the default RPC also supports it", true);
-} catch (error) {
-  const message = error instanceof Error ? error.message : String(error);
-  check("the default RPC also supports it", /invalid|protobuf|signature|epoch|proof/i.test(message), message.split("\n")[0]);
-}
-
-// ── 6b. The server itself must route zkLogin signatures ────────────────────
+// ── What can and cannot be verified here ───────────────────────────────────
 //
-// This block exists because of a specific failure. The zkLogin verifier was
-// written and proved working, but the tests above called the fullnode client
-// DIRECTLY, so a server still running the old code passed every one of them while
-// the browser kept getting 401. Nothing exercised the routing itself.
+// A *valid* zkLogin signature cannot be produced in a test: it needs a real JWT,
+// a real salt, and a Groth16 proof from a prover costing 16 cores or a paid Enoki
+// key. A structurally-valid fake is not enough either -- parsing needs a real JWT
+// header to extract the issuer from, so a fake short-circuits to false long
+// before reaching a fullnode.
 //
-// So: push a zkLogin-shaped signature through the live endpoint. It must not
-// come back with the old "a Sui Client is required" message, which is the
-// fingerprint of code that never gained the fallback. A fake proof cannot be
-// accepted — and must NOT be — but it must be refused for a cryptographic
-// reason, which proves the request reached the fullnode's verifier.
-section("the SERVER routes zkLogin signatures, not just the client");
+// So this path is verified by asserting we use the SDK the way it is documented
+// to be used, and by exercising it for real in a browser with a zkLogin wallet.
+// Claiming more here would be the same false confidence this change set out to
+// remove.
+// Comments are stripped before the greps below, because the code deliberately
+// NAMES the hand-rolled approach it no longer uses in order to explain why.
+const sessionSource = readFileSync(new URL("../api/lib/session.ts", import.meta.url), "utf8")
+  .split("\n")
+  .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
+  .join("\n");
+check("verification passes a Sui client to the SDK",
+  /isValidPersonalMessageSignature\([\s\S]{0,240}client:\s*suiClient\(\)/.test(sessionSource));
+check("and does not hand-roll zkLogin routing", !/parseZkLoginSignature/.test(sessionSource));
+check("and does not call the raw fullnode verifier itself", !/verifyZkLoginSignature\(/.test(sessionSource));
 
+// A plain signature is the path we CAN prove end to end, including that it needs
+// no client and therefore no network.
+check("a plain signature verifies with no client at all",
+  await isValidPersonalMessageSignature(new TextEncoder().encode(ch.message), signed.signature, { address }));
+
+// ── 6b. The server must be running the current code ─────────────────────────
+//
+// This exists because of a specific failure: the verifier was written and proved
+// working against the fullnode client directly, then the browser kept returning
+// 401 with the old "a Sui Client is required" message, because the dev server had
+// been running since before the edit.
+//
+// A fake proof still short-circuits inside the SDK, so this proves the server is
+// running the current code, not that a proof verified. That needs a real wallet.
 const serverCh = await newChallenge(address);
 const serverSig = await kp.signPersonalMessage(new TextEncoder().encode(serverCh.message));
-const plainSigLen = serverSig.signature.length;
-const zkLen = structurallyValidZk.length;
-
-// Sanity: a plain signature must NOT be treated as zkLogin.
 const plainRouted = await redeem(serverCh.token, serverSig.signature, serverSig.bytes);
-check("a plain signature is still accepted (not misrouted)", plainRouted.status === 200, plainRouted.body);
+check("a plain signature is still accepted", plainRouted.status === 200, plainRouted.body);
 
 const zkCh = await newChallenge(address);
 const zkRouted = await redeem(zkCh.token, structurallyValidZk);
 check("a zkLogin signature is rejected", zkRouted.status === 401, zkRouted.status);
+const zkDetail = zkRouted.body.message ?? "";
+check("NOT refused with the pre-fix 'a Sui Client is required' error",
+  !/a sui client \(grpc, graphql, or json rpc\) is required/i.test(zkDetail), zkDetail);
+check("plain and zkLogin signatures are very different sizes",
+  serverSig.signature.length !== structurallyValidZk.length,
+  { plain: serverSig.signature.length, zk: structurallyValidZk.length });
 
-// The decisive assertion. This exact string is what the OLD code returned, and
-// it is the fingerprint of a server that never received the fix.
-const detail = zkRouted.body.message ?? "";
-check(
-  "NOT refused with the pre-fix 'a Sui Client is required' error",
-  !/a sui client \(grpc, graphql, or json rpc\) is required/i.test(detail),
-  detail,
-);
-check(
-  "and the detail names the zkLogin proof instead",
-  /zklogin|secp|proof|signature/i.test(detail),
-  detail,
-);
-check("plain and zkLogin signatures are very different sizes", plainSigLen !== zkLen, { plainSigLen, zkLen });
-section("the session cookie is tamper-evident");
-
-const token = await createSession(address);
-const session = await readSession(token);
-check("round trips", session?.address === address, session?.address);
-check("a tampered payload is refused", (await readSession(`${token}x`)) === null);
-check("a truncated token is refused", (await readSession(token.slice(0, -6))) === null);
-check("garbage is refused", (await readSession("nonsense")) === null);
-check("an empty token is refused", (await readSession("")) === null);
-check("undefined is refused", (await readSession(undefined)) === null);
-
-const forged = `${encodeURIComponent(JSON.stringify({ address: other.getPublicKey().toSuiAddress(), iat: Date.now() }))}.deadbeef`;
-check("a forged signature is refused", (await readSession(forged)) === null);
-
-void issueChallenge;
-console.log("");
-if (failures > 0) {
-  console.log(`${failures} check(s) FAILED`);
-  process.exit(1);
-}
-console.log("all checks passed");

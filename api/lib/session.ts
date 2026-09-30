@@ -14,7 +14,6 @@
  */
 
 import { isValidPersonalMessageSignature } from "@mysten/sui/verify";
-import { parseZkLoginSignature } from "@mysten/sui/zklogin";
 import { suiClient } from "./account.ts";
 import { toBase64, fromBase64 } from "@mysten/sui/utils";
 
@@ -128,61 +127,42 @@ export type RedeemResult =
 /**
  * Verifies a signature over the challenge bytes.
  *
- * Two signature shapes reach this, and they need different verifiers:
+ * Two signature shapes reach this, and the SDK handles both — provided it is
+ * given a client:
  *
- *  - A plain Ed25519 signature, from an ordinary Sui wallet. Verified offline in
- *    one call, binding the signature to the address at the same time.
+ *  - A plain Ed25519 signature, from an ordinary Sui wallet. Verified offline,
+ *    with the address bound in the same call.
  *
- *  - A zkLogin signature, from a wallet holding a zkLogin address. That is a
- *    Groth16 proof plus an ephemeral signature, so it cannot be checked without
- *    asking a fullnode whether the proof is still inside its valid epoch and
- *    whether the issuer's JWK still matches. The SDK says so plainly: "A Sui
- *    Client is required to verify zkLogin signatures."
+ *  - A zkLogin signature, from a wallet holding a zkLogin address: a Groth16
+ *    proof around an ephemeral signature, ~970 bytes rather than ~65. The SDK
+ *    spots the ZkLogin scheme flag, strips it, parses the proof and asks a
+ *    fullnode whether it is still inside its epoch and the issuer's JWK still
+ *    matches. Without a client it throws "A Sui Client is required to verify
+ *    zkLogin signatures" — which is the whole of the problem, and the reason a
+ *    client is passed unconditionally below.
  *
- * The plain path is tried first because it is offline and cheap. The zkLogin path
- * is only taken when the signature actually parses as one, so a garbage signature
- * does not cause a pointless network round trip.
+ * The client is passed for BOTH paths deliberately, so there is one code path
+ * and no detection logic of our own to get wrong. An earlier version of this
+ * tried to route on `parseZkLoginSignature` and was silently broken: the SDK
+ * strips the one-byte scheme flag before parsing, and calling the parser on the
+ * whole signature throws, so every zkLogin signature fell through to the plain
+ * verifier. Hand-rolling this is strictly worse than letting the SDK do it.
  *
- * Note the honesty cost of the second path: verifying a zkLogin signature is not
- * offline. See README > "Verified offline".
+ * Plain signatures still make no network call, because the client is only
+ * consulted inside the zkLogin branch.
  */
 async function verifyChallengeSignature(
   message: Uint8Array,
   signature: string,
   address: string,
-): Promise<{ ok: true } | { ok: false; detail: string; needsClient: boolean }> {
-  // 1. Plain Ed25519 — offline, and it binds the address in the same call.
-  try {
-    const valid = await isValidPersonalMessageSignature(message, signature, { address });
-    if (valid) return { ok: true };
-    return { ok: false, detail: "Signature is well-formed but does not recover to this address.", needsClient: false };
-  } catch (error) {
-    const message_ = error instanceof Error ? error.message : String(error);
-    // Only a signature that parses as zkLogin gets the network path. Anything
-    // else is a genuine bad signature and should not cost a round trip.
-    let isZkLogin = false;
-    try {
-      parseZkLoginSignature(signature);
-      isZkLogin = true;
-    } catch {
-      isZkLogin = false;
-    }
-    if (!isZkLogin) return { ok: false, detail: message_, needsClient: false };
-  }
-
-  // 2. zkLogin — needs a fullnode to check the proof's epoch and the issuer JWK.
-  const response = await suiClient().verifyZkLoginSignature({
-    bytes: toBase64(message),
-    signature,
-    intentScope: "PersonalMessage",
+): Promise<{ ok: true } | { ok: false; detail: string }> {
+  const valid = await isValidPersonalMessageSignature(message, signature, {
     address,
+    // Required for zkLogin signatures; ignored for plain ones.
+    client: suiClient(),
   });
-  if (response.success) return { ok: true };
-  return {
-    ok: false,
-    detail: `zkLogin signature rejected: ${response.errors.join("; ") || "no reason given"}`,
-    needsClient: true,
-  };
+  if (valid) return { ok: true };
+  return { ok: false, detail: "Signature is well-formed but does not recover to this address." };
 }
 
 /**
