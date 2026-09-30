@@ -20,7 +20,10 @@ type Tab = "nudges" | "book" | "add";
 interface Whoami {
   signedIn: boolean;
   address?: string;
+  /** null when the address has no Walrus Memory account at all. */
   accountId?: string | null;
+  /** Whether this app's delegate key is registered on that account. */
+  hasDelegate?: boolean;
 }
 
 export default function App() {
@@ -30,6 +33,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
   const ownership = useOwnership(() => void refreshWho());
+  const [accountIdDraft, setAccountIdDraft] = useState("");
 
   const refreshWho = useCallback(async () => {
     try {
@@ -104,32 +108,49 @@ export default function App() {
     );
   }
 
-  // ── No account yet ─────────────────────────────────────────────────────────
-  if (who.accountId === null) {
+  // ── Not set up yet ─────────────────────────────────────────────────────────
+  // Two distinct states, and conflating them broke it: an address that already
+  // has a Walrus Memory account from another app does NOT need one created, only
+  // the grant. The old gate keyed on accountId alone, so anyone with an existing
+  // account was sent past setup and then had every write fail as unauthorized.
+  if (!who.accountId || !who.hasDelegate) {
     return (
       <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center gap-5 px-4">
         <h1 className="text-xl font-semibold">One step left</h1>
         <p className="text-sm leading-relaxed text-quiet">
-          This address has no Walrus Memory account yet. Create one, then grant People Book a
-          delegate key on it. Both are signed by your wallet, and both are yours to undo — remove
-          the delegate key on chain at any time and this app stops working immediately, without our
-          cooperation. That is the whole point of doing it this way.
+          {who.accountId
+            ? "This address already has a Walrus Memory account, so there is nothing to create. It only needs permission to read and write inside it."
+            : "This address has no Walrus Memory account yet, so it needs one, then permission to read and write inside it."}{" "}
+          {who.accountId ? "That" : "Both"} step{who.accountId ? "" : "s"} {who.accountId ? "is" : "are"} signed by
+          your wallet, and {who.accountId ? "it" : "they are"} yours to undo — remove the delegate key on
+          chain at any time and this app stops working immediately, without our cooperation. That is
+          the whole point of doing it this way.
         </p>
 
         <ol className="space-y-2 text-xs text-quiet">
-          <li>
-            <strong className="text-bright">1.</strong> Create a Walrus Memory account. The account
-            is owned by your address, not by us.
-          </li>
-          <li>
-            <strong className="text-bright">2.</strong> Add a delegate key so this app can read and
-            write inside it. You will see the exact key you are granting.
-          </li>
+          {who.accountId ? (
+            <li>
+              <strong className="text-bright">1.</strong> Add a delegate key so this app can read
+              and write inside your existing account. You will see the exact key you are granting.
+            </li>
+          ) : (
+            <>
+              <li>
+                <strong className="text-bright">1.</strong> Create a Walrus Memory account. The
+                account is owned by your address, not by us.
+              </li>
+              <li>
+                <strong className="text-bright">2.</strong> Add a delegate key so this app can read
+                and write inside it. You will see the exact key you are granting.
+              </li>
+            </>
+          )}
         </ol>
 
         {ownership.step !== "idle" && (
           <p className="rounded border border-line bg-surface px-3 py-2 text-xs text-quiet">
             {ownership.step === "creating" && "Creating your account… approve in your wallet."}
+            {ownership.step === "granting" && who.accountId && "Adding the access grant… approve in your wallet."}
             {ownership.step === "granting" && "Now adding the delegate key… approve in your wallet."}
             {ownership.step === "error" && <span className="text-stop">{ownership.message}</span>}
           </p>
@@ -143,6 +164,43 @@ export default function App() {
           </p>
         )}
 
+        {ownership.step === "needs_account_id" && (
+          <div className="rounded border border-warn/30 bg-warn/5 p-3">
+            <p className="text-xs leading-relaxed text-warn">
+              {ownership.message}
+            </p>
+            <p className="mt-2 text-[11px] leading-relaxed text-quiet">
+              Find it at{" "}
+              <a
+                href="https://memory.walrus.xyz"
+                target="_blank"
+                rel="noreferrer"
+                className="text-link underline decoration-dotted underline-offset-2"
+              >
+                memory.walrus.xyz
+              </a>{" "}
+              — your account row shows it — or in the transaction that created it, on a Sui
+              explorer. If you grant access to an account that is not yours, the transaction is
+              rejected by the contract and nothing happens.
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <input
+                value={accountIdDraft}
+                onChange={(e) => setAccountIdDraft(e.target.value)}
+                placeholder="0x…"
+                className="mono min-w-0 flex-1 rounded border border-line bg-ink/60 px-2 py-1.5 text-xs text-bright outline-none placeholder:text-quiet/60 focus:border-accent/50"
+              />
+              <button
+                onClick={() => void ownership.claimAccountId(accountIdDraft)}
+                disabled={!accountIdDraft.trim()}
+                className="rounded bg-accent px-3 py-1.5 text-xs font-medium text-ink disabled:opacity-40"
+              >
+                Use this account
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="flex flex-wrap items-center gap-2">
           <ConnectButton />
           <button
@@ -151,7 +209,9 @@ export default function App() {
             className="rounded bg-accent px-3 py-1.5 text-xs font-medium text-ink disabled:opacity-40"
           >
             {ownership.step === "idle" || ownership.step === "error"
-              ? "Create my account and grant access"
+              ? who.accountId
+                ? "Grant access to my account"
+                : "Create my account and grant access"
               : "Working…"}
           </button>
         </div>

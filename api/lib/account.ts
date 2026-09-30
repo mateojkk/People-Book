@@ -127,6 +127,40 @@ export async function verifyRegistry(): Promise<{ ok: boolean; detail: string }>
   }
 }
 
+/**
+ * Checks a user-supplied account id is a real Walrus Memory account.
+ *
+ * Needed because a shared object cannot be enumerated: `listOwnedObjects` does
+ * not return shared objects, so a user who already has a MemWal account from
+ * another app cannot have it looked up from their address, and `create_account`
+ * aborts with code 3. They supply the id instead.
+ *
+ * This deliberately does NOT check that the user owns it. That would need a
+ * dry-run for marginal benefit, because the actual enforcement is onchain and
+ * unconditional: `add_delegate_key` is owner-only, so a pasted id belonging to
+ * somebody else aborts with ENotOwner and no grant happens. Claiming otherwise
+ * here would be security theatre -- a client-side check the user controls
+ * proves nothing. This function only catches the cheap mistakes, so the user is
+ * not asked to sign a doomed transaction.
+ */
+export async function verifyAccountShape(
+  accountId: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  if (!isPlausibleAddress(accountId)) {
+    return { ok: false, reason: "That is not a Sui object id. It should start with 0x." };
+  }
+  try {
+    const type = (await suiClient().core.getObject({ objectId: normalize(accountId) })).object?.type ?? "";
+    if (!type) return { ok: false, reason: "No object found at that id on mainnet." };
+    if (!type.endsWith("::account::MemWalAccount")) {
+      return { ok: false, reason: `That object is not a Walrus Memory account (it is a ${type.split("::").slice(-2).join("::")}).` };
+    }
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, reason: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 /** Clears the cached deployment. Used by /health so a rotation is visible. */
 export function resetDeploymentCache(): void {
   cachedConfig = null;
@@ -228,6 +262,41 @@ export async function findAccountId(address: string): Promise<string | null> {
     if (object.objectId) return normalize(object.objectId);
   }
   return null;
+}
+
+/**
+ * Whether this app's delegate key is registered on the given account.
+ *
+ * Probed with the cheapest authenticated call the relayer offers — a namespace
+ * listing — rather than reading onchain state, because it is the same request the
+ * app makes anyway and it fails closed with a clear auth error if the key is
+ * absent. Cached per process: the answer only changes when the user acts, and
+ * they cause that action from the setup screen.
+ */
+const delegateCache = new Map<string, boolean>();
+
+export async function delegateIsRegistered(accountId: string): Promise<boolean> {
+  const cached = delegateCache.get(accountId);
+  if (cached !== undefined) return cached;
+
+  let registered = false;
+  try {
+    const { getClient } = await import("./memwal.ts");
+    const result = await getClient(accountId).listNamespaces({ limit: 1 });
+    registered = Array.isArray(result?.namespaces);
+  } catch {
+    // Any failure means we cannot prove we hold access, and treating that as
+    // "not registered" sends the user to a grant screen that is the right answer.
+    registered = false;
+  }
+
+  delegateCache.set(accountId, registered);
+  return registered;
+}
+
+/** Called after a successful grant, so the next status check does not say no. */
+export function markDelegateRegistered(accountId: string): void {
+  delegateCache.set(accountId, true);
 }
 
 export interface GrantResult {

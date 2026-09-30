@@ -19,7 +19,10 @@ import { capture, phraseNudges } from "./lib/capture.ts";
 import { PeopleBookStore, MemoryNotFoundError } from "./lib/store.ts";
 import { isConfigError, isWriteError, NAMESPACE, RECALL_LIMIT } from "./lib/memwal.ts";
 import {
+  delegateIsRegistered,
   deployment,
+  markDelegateRegistered,
+  verifyAccountShape,
   findAccountId,
   isPlausibleAddress,
   looksLikeRevoked,
@@ -214,7 +217,20 @@ app.get("/api/auth/whoami", async (c) => {
   const session = await readSession(parseCookies(c.req.header("cookie"))[SESSION_COOKIE]);
   if (!session) return c.json({ signedIn: false }, 200);
   const accountId = await findAccountId(session.address).catch(() => null);
-  return c.json({ signedIn: true, address: session.address, accountId });
+
+  // Whether OUR delegate key is already on that account decides whether setup is
+  // finished, and it is NOT implied by the account existing. A user who already
+  // used another MemWal app has an account but has never granted us access, and
+  // sending them straight into the app would mean every write failing as
+  // unauthorized with no explanation. Probed with the cheapest authenticated call
+  // the relayer offers, and cached per process because the answer cannot change
+  // without the user acting.
+  let hasDelegate = false;
+  if (accountId) {
+    hasDelegate = await delegateIsRegistered(accountId);
+  }
+
+  return c.json({ signedIn: true, address: session.address, accountId, hasDelegate });
 });
 
 app.post("/api/auth/logout", (c) => {
