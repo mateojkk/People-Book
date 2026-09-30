@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n api,web -c cyan,magenta \"npm:dev:api\" \"npm:dev:web\"",
-    "dev:web": "vite",
-    "dev:api": "tsx scripts/dev-api.ts",
+    "dev:web": "vite --mode development",
+    "dev:api": "tsx --env-file=.env scripts/dev-api.ts",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
@@ -16,7 +16,8 @@
     "verify:rank": "tsx scripts/verify-ranking.ts",
     "check:registry": "tsx scripts/check-registry.ts",
     "live:check": "tsx scripts/live-memory-check.ts",
-    "verify:isolation": "tsx scripts/verify-isolation.ts"
+    "verify:isolation": "tsx scripts/verify-isolation.ts",
+    "verify:signin": "tsx --env-file=.env scripts/verify-signin.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.7",

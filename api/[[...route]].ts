@@ -162,15 +162,42 @@ app.post("/api/auth/challenge", async (c) => {
 
 /** Step 2: the wallet signs it, and we verify before minting a session. */
 app.post("/api/auth/session", async (c) => {
-  const body = (await c.req.json().catch(() => ({}))) as { token?: unknown; signature?: unknown };
+  const body = (await c.req.json().catch(() => ({}))) as {
+    token?: unknown;
+    signature?: unknown;
+    signedBytes?: unknown;
+  };
   if (typeof body.token !== "string" || typeof body.signature !== "string") {
     return c.json({ error: "bad_request", message: "token and signature are required." }, 400);
   }
 
-  const result = await redeemChallenge(body.token, body.signature);
+  const result = await redeemChallenge(
+    body.token,
+    body.signature,
+    typeof body.signedBytes === "string" ? body.signedBytes : undefined,
+  );
   if (!result.ok) {
+    // The signature and the challenge bytes are never logged — they are
+    // credentials, and MemWal's own guidance is explicit about not logging them.
+    // What is logged is the shape of the failure, which is what a real
+    // incompatibility needs to be diagnosed.
+    console.warn(
+      `[auth] challenge rejected: reason=${result.reason} detail=${result.detail ?? "none"} ` +
+        `sigLen=${body.signature.length} presentedBytes=${typeof body.signedBytes === "string" ? body.signedBytes.length : "absent"}`,
+    );
+
+    // The message is written per failure rather than being one generic string,
+    // because "your signature did not verify" is unactionable when the real
+    // cause could be an expired challenge, an altered message, or a mismatch.
+    const messages: Record<string, string> = {
+      unknown_challenge: "That sign-in request expired before it was used. Ask for a new one and try again.",
+      expired: "That sign-in request took too long to sign. Ask for a new one and try again.",
+      bad_signature: "That signature did not verify against the challenge. Ask for a new one and try again.",
+      address_mismatch: "The address that signed is not the address the challenge was issued for.",
+      message_altered: `The wallet signed a different message than the one we asked it to sign (${result.detail ?? "bytes differ"}).`,
+    };
     return c.json(
-      { error: result.reason, message: "That signature did not verify against the challenge. Ask for a new one and try again." },
+      { error: result.reason, message: messages[result.reason] ?? "Sign-in failed.", detail: result.detail },
       401,
     );
   }

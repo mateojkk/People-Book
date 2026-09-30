@@ -14,7 +14,9 @@
  */
 
 import { isValidPersonalMessageSignature } from "@mysten/sui/verify";
-import { toBase64 } from "@mysten/sui/utils";
+import { parseZkLoginSignature } from "@mysten/sui/zklogin";
+import { suiClient } from "./account.ts";
+import { toBase64, fromBase64 } from "@mysten/sui/utils";
 
 export const SESSION_COOKIE = "pb_session";
 
@@ -22,7 +24,8 @@ export const SESSION_COOKIE = "pb_session";
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
 
-const CHALLENGE_TEXT = "Sign in to People Book. This proves the address is yours.";
+/** Exported so the sign-in test can assert the challenge names this app and not another. */
+export const CHALLENGE_TEXT = "Sign in to People Book. This proves the address is yours.";
 
 export class SessionConfigError extends Error {
   readonly code = "session_config_missing";
@@ -88,6 +91,11 @@ function pruneChallenges(): void {
   }
 }
 
+/** The one place the challenge text is built. Issue and verify must agree exactly. */
+function expectedMessage(record: { address: string; nonce: string }): string {
+  return `${CHALLENGE_TEXT}\n\nAddress: ${record.address}\nNonce: ${record.nonce}`;
+}
+
 export interface ChallengePayload {
   token: string;
   /** Base64. Shown to the user so the sign-in is legible rather than a blank prompt. */
@@ -102,7 +110,7 @@ export function issueChallenge(address: string): ChallengePayload {
   const token = crypto.randomUUID();
   challenges.set(token, { nonce, address, issuedAt: Date.now() });
 
-  const text = `${CHALLENGE_TEXT}\n\nAddress: ${address}\nNonce: ${nonce}`;
+  const text = expectedMessage({ address, nonce });
   return { token, message: text, bytes: encoder.encode(text) };
 }
 
@@ -110,21 +118,92 @@ export type ChallengeFailure =
   | "unknown_challenge"
   | "expired"
   | "bad_signature"
-  | "address_mismatch";
+  | "address_mismatch"
+  | "message_altered";
 
 export type RedeemResult =
   | { ok: true; address: string }
-  | { ok: false; reason: ChallengeFailure };
+  | { ok: false; reason: ChallengeFailure; detail?: string };
+
+/**
+ * Verifies a signature over the challenge bytes.
+ *
+ * Two signature shapes reach this, and they need different verifiers:
+ *
+ *  - A plain Ed25519 signature, from an ordinary Sui wallet. Verified offline in
+ *    one call, binding the signature to the address at the same time.
+ *
+ *  - A zkLogin signature, from a wallet holding a zkLogin address. That is a
+ *    Groth16 proof plus an ephemeral signature, so it cannot be checked without
+ *    asking a fullnode whether the proof is still inside its valid epoch and
+ *    whether the issuer's JWK still matches. The SDK says so plainly: "A Sui
+ *    Client is required to verify zkLogin signatures."
+ *
+ * The plain path is tried first because it is offline and cheap. The zkLogin path
+ * is only taken when the signature actually parses as one, so a garbage signature
+ * does not cause a pointless network round trip.
+ *
+ * Note the honesty cost of the second path: verifying a zkLogin signature is not
+ * offline. See README > "Verified offline".
+ */
+async function verifyChallengeSignature(
+  message: Uint8Array,
+  signature: string,
+  address: string,
+): Promise<{ ok: true } | { ok: false; detail: string; needsClient: boolean }> {
+  // 1. Plain Ed25519 — offline, and it binds the address in the same call.
+  try {
+    const valid = await isValidPersonalMessageSignature(message, signature, { address });
+    if (valid) return { ok: true };
+    return { ok: false, detail: "Signature is well-formed but does not recover to this address.", needsClient: false };
+  } catch (error) {
+    const message_ = error instanceof Error ? error.message : String(error);
+    // Only a signature that parses as zkLogin gets the network path. Anything
+    // else is a genuine bad signature and should not cost a round trip.
+    let isZkLogin = false;
+    try {
+      parseZkLoginSignature(signature);
+      isZkLogin = true;
+    } catch {
+      isZkLogin = false;
+    }
+    if (!isZkLogin) return { ok: false, detail: message_, needsClient: false };
+  }
+
+  // 2. zkLogin — needs a fullnode to check the proof's epoch and the issuer JWK.
+  const response = await suiClient().verifyZkLoginSignature({
+    bytes: toBase64(message),
+    signature,
+    intentScope: "PersonalMessage",
+    address,
+  });
+  if (response.success) return { ok: true };
+  return {
+    ok: false,
+    detail: `zkLogin signature rejected: ${response.errors.join("; ") || "no reason given"}`,
+    needsClient: true,
+  };
+}
 
 /**
  * Consumes a challenge and verifies the signature against it.
  *
  * Single-use on every outcome, not just success — that is what stops a captured
- * signature being replayed to mint sessions. The address is passed as
- * `options.address`, so one call both checks the signature and binds it to the
- * address we intended to sign in, offline, with no RPC round trip.
+ * signature being replayed to mint sessions.
+ *
+ * `signedBytesBase64` is what the WALLET says it signed. Wallets are supposed to
+ * sign the exact bytes handed to them, but some normalise whitespace or re-encode
+ * the string, and then a perfectly valid signature fails against our
+ * reconstruction for reasons that are invisible from the outside. Verifying
+ * against the wallet's own bytes, and separately checking those bytes are a
+ * faithful copy of the challenge, turns "your signature did not verify" into
+ * either a working sign-in or a specific, fixable reason.
  */
-export async function redeemChallenge(token: string, signature: string): Promise<RedeemResult> {
+export async function redeemChallenge(
+  token: string,
+  signature: string,
+  signedBytesBase64?: string,
+): Promise<RedeemResult> {
   const record = challenges.get(token);
   if (!record) return { ok: false, reason: "unknown_challenge" };
   challenges.delete(token);
@@ -133,19 +212,46 @@ export async function redeemChallenge(token: string, signature: string): Promise
     return { ok: false, reason: "expired" };
   }
 
-  const text = `${CHALLENGE_TEXT}\n\nAddress: ${record.address}\nNonce: ${record.nonce}`;
+  const expected = encoder.encode(expectedMessage(record));
 
-  let valid = false;
-  try {
-    valid = await isValidPersonalMessageSignature(encoder.encode(text), signature, {
-      address: record.address,
-    });
-  } catch {
-    return { ok: false, reason: "bad_signature" };
+  // Compare what the wallet claims to have signed against what we asked it to
+  // sign. Length plus a full XOR walk, so a mismatch anywhere is caught.
+  if (signedBytesBase64) {
+    let signed: Uint8Array;
+    try {
+      signed = fromBase64(signedBytesBase64);
+    } catch {
+      return { ok: false, reason: "bad_signature", detail: "The wallet returned unreadable message bytes." };
+    }
+    if (!sameBytes(signed, expected)) {
+      return {
+        ok: false,
+        reason: "message_altered",
+        detail: `The wallet signed ${signed.length} bytes but the challenge is ${expected.length}. It appears to have altered the message before signing.`,
+      };
+    }
   }
-  if (!valid) return { ok: false, reason: "bad_signature" };
+
+  let verdict: Awaited<ReturnType<typeof verifyChallengeSignature>>;
+  try {
+    verdict = await verifyChallengeSignature(expected, signature, record.address);
+  } catch (error) {
+    return {
+      ok: false,
+      reason: "bad_signature",
+      detail: error instanceof Error ? error.message : String(error),
+    };
+  }
+  if (!verdict.ok) return { ok: false, reason: "bad_signature", detail: verdict.detail };
 
   return { ok: true, address: record.address };
+}
+
+function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i += 1) diff |= (a[i] as number) ^ (b[i] as number);
+  return diff === 0;
 }
 
 // ─── Session cookie ──────────────────────────────────────────────────────────

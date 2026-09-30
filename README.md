@@ -177,9 +177,33 @@ writes start failing, because the enforcement is on chain and not in our
 codebase. The app never holds a key capable of creating an account or granting
 itself access to one.
 
-Identity comes from a signed challenge, verified offline against the exact
-address. `ConnectButton` alone is a claim, not a proof — anyone can POST any
-address — so the signature has to check out before a session exists.
+Identity comes from a signed challenge. `ConnectButton` alone is a claim, not a
+proof — anyone can POST any address — so the signature has to check out before a
+session exists.
+
+**Two signature shapes have to be handled**, because a Sui wallet holding a
+zkLogin address does not sign like one holding a normal key:
+
+| What connected | Signature | How it is verified |
+|---|---|---|
+| Normal Sui wallet | ~65 bytes | One offline call that also binds the signature to the address |
+| zkLogin wallet | ~970 bytes — a Groth16 proof round an ephemeral signature | Needs a fullnode, to check the proof is still inside its epoch and the issuer's JWK still matches |
+
+So this is a compatibility shim, not a zkLogin integration: there is no zkLogin
+address derivation, no zkLogin account, no Enoki and no proof generation anywhere
+in this app. The plain path is tried first because it is offline and free, and
+only a signature that genuinely parses as zkLogin is sent to a fullnode, so a
+junk signature never costs a network round trip.
+
+The trade-off is honest and worth stating: **verification is offline for a normal
+wallet and needs one fullnode call for a zkLogin one.** `npm run verify:signin`
+checks both paths, including that the fullnode actually answers with a
+cryptographic verdict rather than a schema error.
+
+The challenge is single-use, so a captured signature cannot be replayed to mint
+sessions, and the client is told which bytes the wallet *actually* signed so a
+wallet that quietly rewrites the message is caught rather than reported as a
+generic verification failure.
 
 ---
 

@@ -57,9 +57,13 @@ export function useSignIn() {
         message: new TextEncoder().encode(challenge.message),
       });
 
+      // `signed.bytes` is what the wallet says it actually signed. Sending it
+      // lets the server distinguish a genuinely bad signature from a wallet that
+      // quietly altered the message — otherwise both look identical from here.
       await api.post<{ address: string }>("/api/auth/session", {
         token: challenge.token,
         signature: signed.signature,
+        signedBytes: signed.bytes,
       });
       setState({ phase: "signed_in", address: account.address });
     } catch (error) {
