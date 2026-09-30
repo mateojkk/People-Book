@@ -263,24 +263,6 @@ it matters rather than by how easy it is.
 
 ---
 
-## Layout
-
-```
-api/[[...route]].ts      Hono routes (all take identity from the session only)
-api/lib/account.ts       deployment resolution + onchain registry verification
-api/lib/memwal.ts        client per account, honest write retry
-api/lib/session.ts       single-use challenge, HMAC httpOnly cookie
-api/lib/store.ts         typed CRUD, tombstone forget, fan-out enumeration
-api/lib/ranking.ts       the initiation engine. no model. the whole thesis.
-api/lib/capture.ts       extract-only capture, optional rephrasing
-shared/types.ts          the contract both sides agree on
-shared/memory-codec.ts   claim-text-first serialisation, rev-based collapse
-shared/demo-cast.ts      25 memories about six invented people
-scripts/verify-*.ts      the assertions. runnable with no network.
-```
-
----
-
 ## Credits
 
 Built on [Walrus Memory](https://memory.walrus.xyz) by Mysten Labs, Sui, and Groq
