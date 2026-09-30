@@ -161,7 +161,11 @@ export async function ourDelegatePublicKey(): Promise<Uint8Array> {
 }
 
 function delegateSeedHex(): string {
-  const hex = process.env.MEMWAL_DELEGATE_KEY;
+  // MEMWAL_PRIVATE_KEY is the name the MemWal docs and most existing projects
+  // use, so it is accepted as a fallback. It is the same value: a 32-byte
+  // Ed25519 seed, here granted into a user's own account rather than minted for
+  // a single shared one.
+  const hex = process.env.MEMWAL_DELEGATE_KEY || process.env.MEMWAL_PRIVATE_KEY;
   if (!hex) {
     throw new AccountConfigError(
       "MEMWAL_DELEGATE_KEY is not set. Run `npm run keygen` and put the output in .env.",

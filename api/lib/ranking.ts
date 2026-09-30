@@ -205,6 +205,8 @@ export function computeNudges(input: RankingInput): RankingResult {
 
   const all = input.memories;
   const taboos = collectTaboos(all);
+  /** People whose content was actually withheld. See the elision note below. */
+  const withheld = new Set<string>();
 
   // Only confirmed memories are eligible to nudge. This single filter is the
   // mechanism behind "it cites, it never claims": an unconfirmed extraction is
@@ -237,12 +239,13 @@ export function computeNudges(input: RankingInput): RankingResult {
     const days = dayDelta(isoOf(now), m.dueAt);
     if (!Number.isFinite(days) || days < 0 || days > horizon) continue;
 
-    candidates.push({
-      nudge: build("date", m, days, undefined, taboos, now),
-      // Closer dates rank higher, but never perfectly: a date in 14 days should
-      // not outrank an overdue promise purely on distance.
-      score: 0.55 + 0.25 * (1 - days / horizon),
-    });
+    // Closer dates rank higher, but never perfectly: a date in 14 days should
+    // not outrank an overdue promise purely on distance.
+    pushNudge(
+      candidates,
+      build("date", m, days, undefined, taboos, withheld),
+      0.55 + 0.25 * (1 - days / horizon),
+    );
   }
 
   // 2. Open promises. Only these — a promise marked kept or settled is exactly
@@ -253,7 +256,7 @@ export function computeNudges(input: RankingInput): RankingResult {
     const days = m.dueAt ? dayDelta(isoOf(now), m.dueAt) : null;
     // Undated open promises still surface, but weakly: you did say you'd do it.
     const score = days === null ? 0.5 : days < 0 ? 1 : 0.6 + 0.2 * (1 - Math.min(days, horizon) / horizon);
-    candidates.push({ nudge: build("promise", m, days, undefined, taboos, now), score });
+    pushNudge(candidates, build("promise", m, days, undefined, taboos, withheld), score);
   }
 
   // 3. Absence. Only for people we actually have confirmed memories about, and
@@ -277,7 +280,10 @@ export function computeNudges(input: RankingInput): RankingResult {
       updatedAt: `${last}T00:00:00.000Z`,
     };
     const { elided } = redact(synthetic.text, taboos.get(person));
-    if (elided) continue;
+    if (elided) {
+      withheld.add(person);
+      continue;
+    }
 
     candidates.push({
       nudge: {
@@ -299,7 +305,7 @@ export function computeNudges(input: RankingInput): RankingResult {
   // 4. Unresolved situations.
   for (const m of eligible) {
     if (m.type !== "event" || m.status !== "open") continue;
-    candidates.push({ nudge: build("loop", m, null, undefined, taboos, now), score: 0.45 });
+    pushNudge(candidates, build("loop", m, null, undefined, taboos, withheld), 0.45);
   }
 
   // 5. Your own follow-through. Only reachable because the user is in the book
@@ -329,7 +335,10 @@ export function computeNudges(input: RankingInput): RankingResult {
   for (const row of followThrough) {
     const claim = `You have told ${row.person} you would do something ${row.open} times and confirmed it ${row.kept === 0 ? "never" : `${row.kept} time${row.kept === 1 ? "" : "s"}`}.`;
     const { text, elided } = redact(claim, taboos.get(row.person));
-    if (elided) continue;
+    if (elided) {
+      withheld.add(row.person);
+      continue;
+    }
 
     candidates.push({
       nudge: {
@@ -348,35 +357,102 @@ export function computeNudges(input: RankingInput): RankingResult {
     });
   }
 
-  // Rank, drop dismissed, then take the top slice. Dismissal removes the nudge
-  // without touching the memory, so the underlying fact survives and can be
-  // raised again later if the date comes round.
-  const ranked = candidates
+  // Rank, drop dismissed, then take the top slice.
+  //
+  // Dedupe first on (kind, person, text): the same fact can legitimately exist
+  // more than once — re-confirming something, or a retry that wrote twice — and
+  // two identical nudges stacked on a screen reads as a bug in the assistant
+  // rather than a fact about the user.
+  const seen = new Set<string>();
+  const unique = candidates.filter((c) => {
+    const key = `${c.nudge.kind}|${c.nudge.person}|${c.nudge.text}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  const ranked = unique
     .filter((c) => !dismissed.has(c.nudge.id))
     .sort((a, b) => b.score - a.score || a.nudge.id.localeCompare(b.nudge.id));
 
-  const nudges = ranked.slice(0, max).map((c) => c.nudge);
+  const nudges = selectForDisplay(ranked.map((c) => c.nudge), max);
 
-  // Announced elisions. Only for people who actually have a taboo and who
-  // actually appear in this set — announcing a rule that changed nothing would
-  // be noise.
-  const inSet = new Set(nudges.map((n) => n.person));
+  // Announced elisions, driven by what was ACTUALLY withheld.
+  //
+  // This used to intersect the taboo list with the people who survived into the
+  // nudge set, which was backwards: when a taboo suppressed a person's only
+  // nudge, they vanished from the set and the suppression went unannounced —
+  // exactly the case where the user most needs to know something was held back.
+  // Announcing only real redactions also keeps it quiet when a rule never came
+  // into play, which is what stops the notice becoming noise.
   const elisions = [...taboos.values()]
-    .filter((t) => inSet.has(t.person))
+    .filter((t) => withheld.has(t.person))
     .map((t) => ({ person: t.person, since: t.since, sourceMemoryId: t.sourceMemoryId }));
 
   return { nudges, elisions, basis };
 }
 
+/**
+ * Picks what to show, keeping the set varied.
+ *
+ * A purely score-ordered top-N is wrong for this product, and the live run
+ * proved it: five ordinary overdue promises filled every slot and the
+ * follow-through nudge — the one observation that is actually about YOU, and the
+ * hardest thing for a person to notice unaided — never appeared at all. A
+ * product whose most distinctive output is the first thing to be crowded out is
+ * shipping the easy half.
+ *
+ * So: at most PER_KIND_CAP of any one kind, and one reserved slot for the best
+ * follow-through nudge when one exists.
+ */
+const PER_KIND_CAP = 3;
+
+function selectForDisplay(sorted: Nudge[], max: number): Nudge[] {
+  const chosen: Nudge[] = [];
+  const perKind = new Map<NudgeKind, number>();
+  let followThrough: Nudge | null = null;
+
+  for (const nudge of sorted) {
+    if (nudge.kind === "followthrough") {
+      // Held back for the reserved slot rather than taking a normal one.
+      if (!followThrough) followThrough = nudge;
+      continue;
+    }
+    const used = perKind.get(nudge.kind) ?? 0;
+    if (used >= PER_KIND_CAP) continue;
+    perKind.set(nudge.kind, used + 1);
+    chosen.push(nudge);
+  }
+
+  if (followThrough) chosen.push(followThrough);
+
+  // Re-sort for display so urgency still orders the final list.
+  const order = new Map(sorted.map((n) => [n.id, sorted.indexOf(n)]));
+  chosen.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+  return chosen.slice(0, max);
+}
+
+/**
+ * Builds a nudge, or null if redaction emptied it.
+ *
+ * A redacted nudge is DROPPED rather than emitted with empty text. The live run
+ * produced exactly that failure: a nudge whose whole sentence was redacted came
+ * through as a blank card. That is worse than either alternative — it looks like
+ * a bug in the assistant rather than restraint, and it teaches the user that
+ * blank output is normal. The rule stays enforced by the taboo filter, and the
+ * elision notice explains the absence; the reminder itself simply is not there.
+ */
 function build(
   kind: NudgeKind,
   m: PersonMemory,
   days: number | null,
   since: string | undefined,
   taboos: Map<string, Taboo>,
-  now: Date,
-): Nudge {
+  withheld: Set<string>,
+): Nudge | null {
   const { text, elided } = redact(phrase(kind, m, days, since), taboos.get(m.person));
+  if (elided) withheld.add(m.person);
+  if (elided || !text.trim()) return null;
   return {
     id: `nudge:${kind}:${m.id}`,
     kind,
@@ -386,8 +462,13 @@ function build(
     sourceText: m.text,
     urgency: 0,
     dueAt: m.dueAt,
-    elided,
+    elided: false,
   };
+}
+
+/** Wraps build() and drops nulls, so callers can push without a null check. */
+function pushNudge(list: { nudge: Nudge; score: number }[], nudge: Nudge | null, score: number): void {
+  if (nudge) list.push({ nudge, score });
 }
 
 /** The one honest line the UI shows when something was withheld. */

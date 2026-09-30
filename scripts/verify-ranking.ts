@@ -206,6 +206,78 @@ check("dismissal does not delete the memory", dismissed.basis.memoryCount === bo
 check("an empty book produces an empty set, not an error", computeNudges({ memories: [], now: NOW }).nudges.length === 0);
 check("horizon is reported in the basis", computeNudges({ memories: [], now: NOW }).basis.horizonDays === HORIZON_DAYS);
 
+// ─── Display selection ───────────────────────────────────────────────────────
+// Found by running the engine over a real mainnet book: five ordinary overdue
+// promises filled every slot and the follow-through nudge never appeared. The
+// most distinctive output was the first thing crowded out.
+section("display selection keeps the set varied");
+
+const crowded: PersonMemory[] = [];
+for (let i = 0; i < 8; i += 1) {
+  crowded.push(mem({ person: `Friend${i}`, type: "promise", text: `Owed Friend${i} a reply.`, dueAt: "2026-09-01" }));
+}
+for (let i = 0; i < 3; i += 1) {
+  crowded.push(mem({ person: "Sam", type: "promise", text: `Told Sam he would send photo ${i}.`, dueAt: "2026-09-0" + (i + 1) }));
+}
+
+const packed = computeNudges({ memories: crowded, now: NOW });
+const packedKinds = packed.nudges.map((n) => n.kind);
+check("follow-through survives a crowded set", packedKinds.includes("followthrough"), packedKinds);
+check("it is still not the loudest thing", packed.nudges[0]?.kind !== "followthrough", packedKinds);
+check("the set stays capped", packed.nudges.length <= 5, packed.nudges.length);
+
+const promiseHeavy = packed.nudges.filter((n) => n.kind === "promise").length;
+check("no single kind fills the whole set", promiseHeavy < packed.nudges.length, { promiseHeavy, total: packed.nudges.length });
+
+// A nudge that exists for a person but whose text is wholly redacted must be
+// dropped, not emitted blank. A blank card reads as a bug, not as restraint.
+section("a fully redacted nudge is dropped, not blank");
+
+const onlyTabooed = [
+  mem({ person: "Ravi", type: "taboo", text: "Never mention the divorce to him.", occurredAt: "2026-04-02" }),
+  mem({ person: "Ravi", type: "event", text: "He brought up the divorce paperwork again.", dueAt: "2026-10-04" }),
+  mem({ person: "Maya", type: "event", text: "Birthday on the 3rd.", dueAt: "2026-10-03" }),
+];
+const suppressed = computeNudges({ memories: onlyTabooed, now: NOW });
+check("nothing blank is emitted", suppressed.nudges.every((n) => n.text.trim().length > 0), suppressed.nudges.map((n) => n.text));
+check("the redacted nudge is gone", !suppressed.nudges.some((n) => n.person === "Ravi" && /divorce/i.test(n.text)));
+// The key assertion: the person vanished from the set entirely, and the
+// suppression is STILL announced. The old code intersected the taboo list with
+// the surviving set, so a fully suppressed person went silent — the one case
+// where the user most needs to know.
+check(
+  "the elision is announced even though the person has no surviving nudge",
+  suppressed.elisions.some((e) => e.person === "Ravi"),
+  suppressed.elisions,
+);
+check("unaffected people still get their nudges", suppressed.nudges.some((n) => n.person === "Maya"));
+
+// A rule that never came into play must stay quiet, or the notice becomes noise.
+section("an uninvoked taboo says nothing");
+const neverInvoked = computeNudges({
+  memories: [
+    mem({ person: "Ravi", type: "taboo", text: "Never mention the divorce to him.", occurredAt: "2026-04-02" }),
+    mem({ person: "Ravi", type: "event", text: "He is moving to Lisbon in the spring.", dueAt: "2026-10-05" }),
+  ],
+  now: NOW,
+});
+check("unrelated news still surfaces", neverInvoked.nudges.some((n) => /Lisbon/.test(n.text)), neverInvoked.nudges.map((n) => n.text));
+check("and nothing is announced as withheld", neverInvoked.elisions.length === 0, neverInvoked.elisions);
+
+// The same fact stored twice (a retried write, or a re-confirmation) must not
+// produce two stacked nudges.
+section("duplicate facts collapse");
+const dupe = computeNudges({
+  memories: [
+    mem({ person: "Maya", type: "promise", text: "Owed Maya the photos.", dueAt: "2026-09-05" }),
+    mem({ person: "Maya", type: "promise", text: "Owed Maya the photos.", dueAt: "2026-09-05" }),
+  ],
+  now: NOW,
+});
+const dupeNudges = dupe.nudges.filter((n) => n.person === "Maya" && n.kind === "promise");
+check("the same fact does not produce two nudges", dupeNudges.length === 1, dupeNudges.map((n) => n.text));
+check("but both stored memories are still counted", dupe.basis.memoryCount === 2);
+
 console.log("");
 if (failures > 0) {
   console.log(`${failures} check(s) FAILED`);

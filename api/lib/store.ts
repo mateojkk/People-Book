@@ -56,6 +56,21 @@ const ENUMERATION_QUERIES: readonly string[] = [
   "people I know and what I owe them",
 ];
 
+/**
+ * Enumeration tuning, all of it measured against the production relayer.
+ *
+ * CONCURRENCY: eight concurrent recalls at limit 200 against one relayer is
+ * enough to trip its throttle, and being throttled by our own read pattern is
+ * avoidable. Batches of two keep the ledger read well inside a normal request.
+ *
+ * ATTEMPTS/BACKOFF: the first recall after a write took 22.6s against a 3.5s
+ * warm baseline, and fails outright during that window. One retry is enough to
+ * cover index lag without turning a read into a minute-long request.
+ */
+const ENUMERATION_CONCURRENCY = 2;
+const ENUMERATION_ATTEMPTS = 3;
+const ENUMERATION_BACKOFF_MS = 1_500;
+
 export interface StoreOptions {
   accountId: string;
   namespace?: string;
@@ -142,35 +157,75 @@ export class PeopleBookStore {
   // ── Reads ─────────────────────────────────────────────────────────────────
 
   /**
+   * Runs one enumeration query, retrying transient failures.
+   *
+   * Retrying is not defensive padding, it is required for correctness right
+   * after a write. Measured against production: the first recall following a
+   * bulk write took 22.6s while the same query took 3.5s once the index caught
+   * up, and during that window the queries fail rather than returning thin
+   * results. Without a retry, a verification read immediately after seeding
+   * concludes the whole namespace is empty — which is exactly the false negative
+   * this method exists to avoid.
+   */
+  private async queryWithRetry(query: string): Promise<{ blobId: string; text: string }[]> {
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= ENUMERATION_ATTEMPTS; attempt += 1) {
+      try {
+        const result = await this.get().recall({
+          query,
+          limit: RECALL_LIMIT,
+          namespace: this.namespace,
+        });
+        return (result.results ?? []).map((hit) => ({ blobId: hit.blob_id, text: hit.text }));
+      } catch (error) {
+        lastError = error;
+        if (attempt < ENUMERATION_ATTEMPTS) {
+          await new Promise((resolve) => setTimeout(resolve, ENUMERATION_BACKOFF_MS * attempt));
+        }
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error(String(lastError));
+  }
+
+  /**
    * Fans out the enumeration queries and unions the hits.
    *
-   * Runs the queries concurrently because each one is a relayer round trip and
-   * they are independent. Failures on individual queries are tolerated — a
-   * partial ledger is still a ledger — but if every query fails we surface the
+   * Queries run in small batches rather than all at once: eight concurrent
+   * high-limit recalls against one relayer is enough to trigger its throttle,
+   * and being throttled by our own read pattern is not a good look.
+   *
+   * Partial failure is tolerated and reported as `coverage: "partial"`, because
+   * a short ledger is more useful than none. If every query fails we surface the
    * error rather than returning an empty book that looks like a fresh account.
    */
   async listLive(): Promise<{ memories: PersonMemory[]; coverage: "complete" | "partial" }> {
-    const results = await Promise.allSettled(
-      ENUMERATION_QUERIES.map((query) => this.get().recall({ query, limit: RECALL_LIMIT, namespace: this.namespace })),
-    );
-
     const blobs = new Map<string, string>();
     let failed = 0;
-    for (const result of results) {
-      if (result.status === "rejected") {
-        failed += 1;
-        continue;
-      }
-      for (const hit of result.value.results ?? []) {
-        // Dedupe by blob id. The same memory is legitimately returned by several
-        // queries, and the stored text differs per revision, so the blob id is
-        // the only honest key here.
-        blobs.set(hit.blob_id, hit.text);
+    let lastError: unknown;
+
+    for (let i = 0; i < ENUMERATION_QUERIES.length; i += ENUMERATION_CONCURRENCY) {
+      const batch = ENUMERATION_QUERIES.slice(i, i + ENUMERATION_CONCURRENCY);
+      const settled = await Promise.allSettled(batch.map((q) => this.queryWithRetry(q)));
+      for (const result of settled) {
+        if (result.status === "rejected") {
+          failed += 1;
+          lastError = result.reason;
+          continue;
+        }
+        for (const hit of result.value) {
+          // Dedupe by blob id, not by text. The same memory is legitimately
+          // returned by several queries, and two REVISIONS of one memory are two
+          // different blobs with the same logical id — so a text key would
+          // either merge them wrongly or fail to merge the identical repeats.
+          blobs.set(hit.blobId, hit.text);
+        }
       }
     }
 
     if (failed === ENUMERATION_QUERIES.length) {
-      throw new Error("Walrus Memory did not respond. We could not read your book, so we are not going to show you an empty one.");
+      throw new Error(
+        `Walrus Memory did not respond. We could not read your book, so we are not going to show you an empty one. Last error: ${lastError instanceof Error ? lastError.message : String(lastError)}`,
+      );
     }
 
     const parsed: PersonMemory[] = [];
@@ -226,12 +281,82 @@ export class PeopleBookStore {
   }
 
   /**
-   * Writes many memories, used by the demo cast loader.
+   * Writes many memories concurrently, for the demo cast loader.
    *
-   * Sequential rather than bulk because the relayer throttles aggressively under
-   * concurrent writes, and a bulk call that half-fails gives the user a demo
-   * book that is quietly incomplete. Slow and honest beats fast and wrong.
+   * Sequential writes cost ~45s each on mainnet, which is ~18 minutes for a
+   * 25-person book — unusable for a one-click demo. Bulk brings that down to
+   * roughly the time of the slowest item.
+   *
+   * Bulk is treated as UNTRUSTED here. `rememberBulkAndWait` is documented to
+   * return one result per input item, in order, with a per-item status, and there
+   * is a known case of a batch being accepted while nothing lands. So the result
+   * is checked twice: per-item status first, then a re-read to confirm the claims
+   * are actually recallable. A seed that quietly half-wrote would leave a judge
+   * looking at a book that is missing people, which is worse than a visible error.
    */
+  async seedBulk(inputs: MakeMemoryInput[]): Promise<{ written: PersonMemory[]; failed: string[] }> {
+    if (inputs.length === 0) return { written: [], failed: [] };
+
+    // The relayer caps a bulk request at 20 items. Chunked at 10 rather than 20
+    // to stay under the limit with margin, and because a smaller batch is less
+    // likely to be throttled into a partial landing.
+    const CHUNK = 10;
+    const chunks: MakeMemoryInput[][] = [];
+    for (let i = 0; i < inputs.length; i += CHUNK) {
+      chunks.push(inputs.slice(i, i + CHUNK));
+    }
+
+    const written: PersonMemory[] = [];
+    const failed: string[] = [];
+
+    // Chunks are sequential, items within a chunk are concurrent. Going fully
+    // parallel would mean several batches in flight at once, which is exactly
+    // the load the relayer throttles.
+    for (const chunk of chunks) {
+      const memories = chunk.map((input) => makeMemory(input));
+      const items = memories.map((memory) => ({ text: serializeMemory(memory) }));
+
+      let result: Awaited<ReturnType<MemWal["rememberBulkAndWait"]>> | null = null;
+      try {
+        result = await this.get().rememberBulkAndWait(items, {
+          pollIntervalMs: 2_000,
+          // Generous: mainnet seal + embed + upload runs ~45s per item, and a
+          // congested relayer is slower. Bounded so a stuck batch fails loudly.
+          timeoutMs: 300_000,
+        });
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        for (const memory of memories) failed.push(`${memory.person}: ${detail}`);
+        continue;
+      }
+
+      memories.forEach((memory, index) => {
+        const item = result?.results?.[index];
+        if (!item || item.status !== "done" || !item.blob_id) {
+          failed.push(`${memory.person}: ${item?.error ?? item?.status ?? "no result returned"}`);
+        } else {
+          written.push(memory);
+        }
+      });
+    }
+
+    // Final re-read, because a "done" status is the server's word for it and the
+    // only proof is that the text comes back out of a recall.
+    const { memories: readBack } = await this.listLive();
+    const recalled = new Set(readBack.map((m) => m.id));
+    const confirmed = written.filter((m) => recalled.has(m.id));
+    const unconfirmed = written.filter((m) => !recalled.has(m.id));
+
+    return {
+      written: confirmed,
+      failed: [
+        ...failed,
+        ...unconfirmed.map((m) => `${m.person}: reported done but did not come back on recall`),
+      ],
+    };
+  }
+
+  /** Sequential writes. Used for small batches where clarity beats speed. */
   async seed(memories: MakeMemoryInput[]): Promise<PersonMemory[]> {
     const written: PersonMemory[] = [];
     for (const input of memories) {

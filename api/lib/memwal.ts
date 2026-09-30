@@ -37,15 +37,6 @@ export class MemWalWriteError extends Error {
   }
 }
 
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new MemWalConfigError(
-      `${name} is not set. Run \`npm run keygen\` and copy the output into .env. Without a delegate key there is nowhere to write memory, and we do not pretend otherwise.`,
-    );
-  }
-  return value;
-}
 
 /**
  * One client per (accountId, namespace), cached for the life of the process.
@@ -66,10 +57,30 @@ export function getClient(accountId: string, namespace: string = NAMESPACE): Mem
   const cached = clients.get(`${accountId}::${namespace}`);
   if (cached) return cached;
 
-  const key = requireEnv("MEMWAL_DELEGATE_KEY");
+  // MEMWAL_PRIVATE_KEY is the name the MemWal docs and existing projects use, so
+  // it is accepted as a fallback. Same value either way: a 32-byte Ed25519 seed,
+  // here granted into a user's own account rather than minted for a shared one.
+  // Read without requireEnv, which throws on the first missing name and would
+  // never reach the fallback.
+  const key = process.env.MEMWAL_DELEGATE_KEY || process.env.MEMWAL_PRIVATE_KEY;
+  if (!key) {
+    throw new MemWalConfigError(
+      "No delegate key configured. Run `npm run keygen` and set MEMWAL_DELEGATE_KEY. Without one there is nowhere to write memory, and we do not pretend otherwise.",
+    );
+  }
   const serverUrl = process.env.MEMWAL_SERVER_URL ?? "https://relayer.memory.walrus.xyz";
 
-  const client = MemWal.create({ key, accountId, serverUrl, namespace });
+  const client = MemWal.create({
+    key,
+    accountId,
+    serverUrl,
+    namespace,
+    // Measured against the production relayer: rememberAsync returns in ~10s
+    // but the job can take ~45s to seal, embed and upload to Walrus. The default
+    // request timeout is shorter than that, so a normal write looks like a
+    // network failure.
+    requestTimeoutMs: 120_000,
+  });
   clients.set(`${accountId}::${namespace}`, client);
   return client;
 }
@@ -107,7 +118,11 @@ export async function withWriteRetry<T>(
   opts: { attempts?: number; perAttemptMs?: number; onRetry?: (error: unknown, attempt: number) => void } = {},
 ): Promise<T> {
   const attempts = opts.attempts ?? 2;
-  const perAttemptMs = opts.perAttemptMs ?? 25_000;
+  // Measured, not guessed. A mainnet write accepts in ~10s and completes in
+  // ~45s, so a 25s cap failed writes that were about to succeed — and the retry
+  // then raced the first attempt. 90s clears it with room for a congested
+  // relayer, while still bounding a genuinely stuck one.
+  const perAttemptMs = opts.perAttemptMs ?? 90_000;
 
   let lastError: unknown;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {

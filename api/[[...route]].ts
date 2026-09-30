@@ -488,7 +488,22 @@ app.post("/api/demo/seed", async (c) => {
         existing: memories.length,
       }, 409);
     }
-    const written = await resolved.store.seed(demoCast());
+    // Bulk, verified twice inside seedBulk. A demo book that quietly half-wrote
+    // would be worse than a visible failure: a judge would conclude the memory
+    // does not work.
+    const { written, failed } = await resolved.store.seedBulk(demoCast());
+    if (failed.length > 0) {
+      return c.json(
+        {
+          error: "partial_seed",
+          message: `Seeded ${written.length} of ${demoCast().length}. These did not land: ${failed.join("; ")}. Run it again to fill the gaps.`,
+          seeded: written.length,
+          expected: demoCast().length,
+          failed,
+        },
+        502,
+      );
+    }
     return c.json({ seeded: written.length }, 201);
   } catch (error) {
     return toErrorResponse(c, error);
