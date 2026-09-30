@@ -11,8 +11,42 @@
 
 import { MemWal } from "@mysten-incubation/memwal";
 
-/** Every account in this deployment lives in one namespace, inside the user's own account. */
-export const NAMESPACE = "peoplebook";
+/**
+ * The one namespace this app ever reads or writes.
+ *
+ * FORCED, not configurable. Every route constructs its store from this constant
+ * and no route accepts a namespace from the request, because a caller who could
+ * name a namespace could read a different one. Isolation here is "we decide",
+ * not "you decide" — see resolveStore() in api/[[...route]].ts.
+ *
+ * The `book-` prefix is what stops us encroaching on someone else's memory. A
+ * Walrus account can hold many namespaces, and a user connecting their wallet may
+ * already have memories there from other apps or their own use. This app must
+ * only ever touch its own, and the prefix is the boundary that makes that
+ * checkable rather than merely intended: assertAppNamespace() below refuses
+ * anything not prefixed `book-`, so a future route, a refactor or a bad constant
+ * fails loudly instead of quietly reading someone else's book.
+ *
+ * To change the suffix, this is the only line to touch.
+ */
+export const NAMESPACE_PREFIX = "book";
+export const NAMESPACE = `${NAMESPACE_PREFIX}-people`;
+
+/**
+ * Refuses any namespace outside this app's prefix.
+ *
+ * Throwing rather than warning is deliberate. A namespace mistake in a memory
+ * layer is not a cosmetic error: it reads or overwrites the wrong data in
+ * somebody's account, and the user has no way to see that happened.
+ */
+export function assertAppNamespace(namespace: string): string {
+  if (!namespace.startsWith(`${NAMESPACE_PREFIX}-`)) {
+    throw new Error(
+      `Refusing to use namespace "${namespace}": this app only touches ${NAMESPACE_PREFIX}-* namespaces, so it cannot read or overwrite memory that is not its own.`,
+    );
+  }
+  return namespace;
+}
 
 /**
  * Requests a namespace count this high and the relayer will clamp it. 200 is
@@ -54,6 +88,7 @@ const clients = new Map<string, MemWal>();
  * an account id we were not given is a memory space we have no right to touch.
  */
 export function getClient(accountId: string, namespace: string = NAMESPACE): MemWal {
+  assertAppNamespace(namespace);
   const cached = clients.get(`${accountId}::${namespace}`);
   if (cached) return cached;
 
@@ -90,6 +125,7 @@ export function getClient(accountId: string, namespace: string = NAMESPACE): Mem
  * a wedged client does not poison every later request.
  */
 export function dropClient(accountId: string, namespace: string = NAMESPACE): void {
+  assertAppNamespace(namespace);
   const cacheKey = `${accountId}::${namespace}`;
   const client = clients.get(cacheKey);
   if (!client) return;

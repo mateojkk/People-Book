@@ -25,8 +25,9 @@ if (!accountId) {
 const account: string = accountId;
 
 // A separate namespace so a live check never pollutes a real book, and so it can
-// be re-run without accumulating duplicate demo entries every time.
-const NS = "peoplebook-livecheck";
+// be re-run without accumulating duplicate demo entries every time. Still
+// book-prefixed, because the store refuses anything else -- see assertAppNamespace.
+const NS = "book-livecheck";
 
 let failures = 0;
 function check(name: string, ok: boolean, detail?: unknown) {

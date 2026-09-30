@@ -35,7 +35,14 @@ import {
   serializeMemory,
 } from "../../shared/memory-codec.ts";
 import type { PersonMemory } from "../../shared/types.ts";
-import { NAMESPACE, RECALL_LIMIT, dropClient, getClient, withWriteRetry } from "./memwal.ts";
+import {
+  NAMESPACE,
+  RECALL_LIMIT,
+  assertAppNamespace,
+  dropClient,
+  getClient,
+  withWriteRetry,
+} from "./memwal.ts";
 
 /**
  * Broad queries used to enumerate a namespace.
@@ -91,7 +98,11 @@ export class PeopleBookStore {
 
   constructor(options: StoreOptions) {
     this.accountId = options.accountId;
-    this.namespace = options.namespace ?? NAMESPACE;
+    // Validated here, at construction, rather than left to the first read.
+    // getClient() also checks, but that is lazy: a misconfigured store would
+    // build fine and only fail on the first query, which is late enough for the
+    // failure to look like a relayer problem rather than a wiring mistake.
+    this.namespace = assertAppNamespace(options.namespace ?? NAMESPACE);
   }
 
   private get(): MemWal {
