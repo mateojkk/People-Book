@@ -236,12 +236,25 @@ function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
 
 // ─── Session cookie ──────────────────────────────────────────────────────────
 
-export async function createSession(address: string): Promise<string> {
-  const payload = encodeURIComponent(JSON.stringify({ address, iat: Date.now() }));
+/**
+ * Mints a session.
+ *
+ * The Walrus Memory account id is carried IN the cookie once it is known, because
+ * it cannot be re-derived from the address (MemWalAccount is a shared object, and
+ * shared objects are not enumerable). Carrying it means a refresh, or a second
+ * tab, or any later request resolves the same memory space without a chain round
+ * trip and without the user being asked to paste an id again.
+ */
+export async function createSession(address: string, accountId?: string | null): Promise<string> {
+  const payload = encodeURIComponent(
+    JSON.stringify({ address, accountId: accountId ?? null, iat: Date.now() }),
+  );
   return `${payload}.${await mac(payload)}`;
 }
 
-export async function readSession(token: string | undefined): Promise<{ address: string } | null> {
+export async function readSession(
+  token: string | undefined,
+): Promise<{ address: string; accountId: string | null } | null> {
   if (!token) return null;
   const dot = token.lastIndexOf(".");
   if (dot === -1) return null;
@@ -257,11 +270,20 @@ export async function readSession(token: string | undefined): Promise<{ address:
   if (!safeEqual(token.slice(dot + 1), expected)) return null;
 
   try {
-    const parsed = JSON.parse(decodeURIComponent(payload)) as { address?: unknown; iat?: unknown };
+    const parsed = JSON.parse(decodeURIComponent(payload)) as {
+      address?: unknown;
+      accountId?: unknown;
+      iat?: unknown;
+    };
     if (typeof parsed.address !== "string" || !parsed.address) return null;
     if (typeof parsed.iat !== "number") return null;
     if (Date.now() - parsed.iat > SESSION_TTL_MS) return null;
-    return { address: parsed.address };
+    return {
+      address: parsed.address,
+      // Absent in sessions minted before the account was known, which is fine:
+      // the caller falls back to resolving it.
+      accountId: typeof parsed.accountId === "string" && parsed.accountId ? parsed.accountId : null,
+    };
   } catch {
     return null;
   }

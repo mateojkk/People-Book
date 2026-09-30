@@ -24,6 +24,7 @@
     "@mysten-incubation/memwal": "^0.1.8",
     "@mysten/dapp-kit-react": "^2.1.37",
     "@mysten/sui": "^2.33.2",
+    "@supabase/supabase-js": "^2.116.0",
     "hono": "^4.13.12",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

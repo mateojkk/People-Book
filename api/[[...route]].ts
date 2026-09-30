@@ -17,6 +17,7 @@ import type { Context } from "hono";
 import { computeNudges, elisionLine } from "./lib/ranking.ts";
 import { capture, phraseNudges } from "./lib/capture.ts";
 import { PeopleBookStore, MemoryNotFoundError } from "./lib/store.ts";
+import { lookupAccountId, recordAccountId } from "./lib/accounts.ts";
 import { isConfigError, isWriteError, NAMESPACE, RECALL_LIMIT } from "./lib/memwal.ts";
 import {
   delegateIsRegistered,
@@ -65,9 +66,18 @@ async function resolveStore(c: Context): Promise<
     return { error: c.json({ error: "not_signed_in", message: "Connect your wallet and sign the challenge to continue." }, 401) };
   }
 
-  let accountId: string | null = null;
+  // The session carries the account id once it is known. It is preferred over
+  // resolution because MemWalAccount is a shared object and shared objects
+  // cannot be enumerated from their owner, so resolveAccountId() finds nothing
+  // for any real user. A cookie also means a refresh or a second tab resolves
+  // the same memory space with no chain round trip.
+  let accountId: string | null = session.accountId;
   try {
-    accountId = await findAccountId(session.address);
+    // Session cookie first: it is free and per-browser. Then the database, which
+    // is what survives a new browser or a new device. Only then the chain, which
+    // cannot help for a shared object but costs one call.
+    if (!accountId) accountId = await lookupAccountId(session.address);
+    if (!accountId) accountId = await findAccountId(session.address);
   } catch (error) {
     return {
       error: c.json(
@@ -216,7 +226,8 @@ app.post("/api/auth/session", async (c) => {
 app.get("/api/auth/whoami", async (c) => {
   const session = await readSession(parseCookies(c.req.header("cookie"))[SESSION_COOKIE]);
   if (!session) return c.json({ signedIn: false }, 200);
-  const accountId = await findAccountId(session.address).catch(() => null);
+  const accountId =
+    session.accountId ?? (await lookupAccountId(session.address)) ?? (await findAccountId(session.address).catch(() => null));
 
   // Whether OUR delegate key is already on that account decides whether setup is
   // finished, and it is NOT implied by the account existing. A user who already
@@ -225,9 +236,17 @@ app.get("/api/auth/whoami", async (c) => {
   // unauthorized with no explanation. Probed with the cheapest authenticated call
   // the relayer offers, and cached per process because the answer cannot change
   // without the user acting.
-  let hasDelegate = false;
-  if (accountId) {
+  // The session carrying an account id means setup already completed for this
+  // account, because the id is only written there after a successful grant. So
+  // the answer is known without a round trip. Falling back to the probe is what
+  // makes an old session still work.
+  let hasDelegate: boolean;
+  if (session.accountId) {
+    hasDelegate = true;
+  } else if (accountId) {
     hasDelegate = await delegateIsRegistered(accountId);
+  } else {
+    hasDelegate = false;
   }
 
   return c.json({ signedIn: true, address: session.address, accountId, hasDelegate });

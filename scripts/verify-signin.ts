@@ -241,3 +241,60 @@ check("plain and zkLogin signatures are very different sizes",
   serverSig.signature.length !== structurallyValidZk.length,
   { plain: serverSig.signature.length, zk: structurallyValidZk.length });
 
+// ── 7. A refresh must not send the user back through setup ───────────────────
+//
+// Reported as "a hard refresh kills it". The cause was that the session carried
+// only an address, and the account id could not be re-derived from it — it is a
+// shared object — so every load asked for the id again, and the re-grant then
+// aborted as a duplicate whose only advice was to reload. Which changed nothing,
+// so it looped.
+section("the session carries the account id, so a refresh needs nothing from the user");
+
+const SAMPLE_ACCOUNT = "0x557f9b1037d86cc4d3486a8db5e8823b4c2575184579ea9979822c97538e9706";
+
+const withAccount = await createSession(address, SAMPLE_ACCOUNT);
+const readBack = await readSession(withAccount);
+check("an account id round trips in the cookie", readBack?.accountId === SAMPLE_ACCOUNT, readBack?.accountId);
+check("so a reload resolves the same memory space", readBack?.address === address);
+
+// A user who has not set up yet must still get a usable session.
+const withoutAccount = await readSession(await createSession(address));
+check("a session with no account id is still valid", withoutAccount?.address === address);
+check("and reports it as unknown rather than guessing", withoutAccount?.accountId === null);
+
+// The account id is the one field that decides whose book gets read, so a
+// tampered value must not survive.
+const hijack = `${encodeURIComponent(JSON.stringify({
+  address: other.getPublicKey().toSuiAddress(),
+  accountId: SAMPLE_ACCOUNT,
+  iat: Date.now(),
+}))}.deadbeef`;
+check("a forged account id is refused", (await readSession(hijack)) === null);
+
+// ── 8. The session cookie is tamper-evident ─────────────────────────────────
+section("the session cookie is tamper-evident");
+
+const token = await createSession(address);
+check("round trips", (await readSession(token))?.address === address);
+check("a tampered payload is refused", (await readSession(`${token}x`)) === null);
+check("a truncated token is refused", (await readSession(token.slice(0, -6))) === null);
+check("garbage is refused", (await readSession("nonsense")) === null);
+check("an empty token is refused", (await readSession("")) === null);
+check("undefined is refused", (await readSession(undefined)) === null);
+
+// ── 9. The account-mapping store degrades safely ───────────────────────────
+//
+// A missing database must never take the app down, because the session cookie
+// alone is enough for one browser. It reports false instead of throwing.
+section("the account mapping is an improvement, not a dependency");
+
+const accounts = await import("../api/lib/accounts.ts");
+check("a lookup with no database returns null, not an error", (await accounts.lookupAccountId(address)) === null);
+check("a write with no database returns false, not a throw", (await accounts.recordAccountId(address, SAMPLE_ACCOUNT)) === false);
+
+console.log("");
+if (failures > 0) {
+  console.log(`${failures} check(s) FAILED`);
+  process.exit(1);
+}
+console.log("all checks passed");

@@ -177,16 +177,32 @@ export function useOwnership(onDone: () => void): OwnershipState {
         throw new Error("Setup finished without a resolvable account id.");
       }
 
-      await addDelegateKey({
-        packageId,
-        registryId,
-        accountId,
-        publicKey: fromHex(publicKey),
-        label: "People Book",
-        walletSigner: walletSigner as never,
-        suiClient: client as never,
-        suiNetwork: network,
-      });
+      try {
+        await addDelegateKey({
+          packageId,
+          registryId,
+          accountId,
+          publicKey: fromHex(publicKey),
+          label: "People Book",
+          walletSigner: walletSigner as never,
+          suiClient: client as never,
+          suiNetwork: network,
+        });
+      } catch (error) {
+        // Code 0 is EDelegateKeyAlreadyExists. That means the grant this app was
+        // about to make is already there, which is SUCCESS, not a failure -- and
+        // treating it as an error produced a loop where the only advice given
+        // was to reload, and reloading changed nothing.
+        if (!/abort code:\s*0\b/.test(error instanceof Error ? error.message : String(error))) {
+          throw error;
+        }
+      }
+
+      // Hand the account id to the server so it lands in the session cookie.
+      // Without this a refresh goes back through setup, because the account
+      // cannot be re-resolved from the address.
+      rememberClaim(accountId);
+      await api.post("/api/account/adopt", { accountId });
 
       setStep("done");
       onDone();

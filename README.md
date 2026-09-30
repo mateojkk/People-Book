@@ -15,6 +15,7 @@ Built for [Walrus Sessions 8: Chatbots That Remember](https://thewalrussessions.
 | **It cannot make a claim it can't prove** | Unconfirmed extractions are structurally incapable of reaching you as a statement about your life. |
 | **It tells you when it holds something back** | Suppressed topics are announced with the date the rule was set, not silently dropped. |
 | **You own the account** | You sign the transactions. The app holds a scoped, onchain-revocable delegate key and nothing else. |
+| **It survives a refresh** | Your account id is remembered server-side, so a new browser or a cleared cookie still finds your book. |
 | **Cannot touch your other memory** | One forced namespace. No route can name another, and the store throws if asked to. |
 | **Verified on mainnet** | 72 blobs written, recalled, ranked and forgotten against the production relayer. |
 
@@ -283,6 +284,15 @@ publish real details about real people.
 this app access are both signed by your wallet, so a new user needs a little SUI
 for gas. That friction is the cost of not being able to hold your memory for you.
 Removing it means Google login and gasless transactions, which needs Enoki.
+
+**One small mapping has to be stored somewhere, and it holds nothing.** A
+Walrus Memory account is a *shared* Sui object, so it cannot be looked up from
+the address that owns it — shared objects are not enumerable. So the account id is
+recorded server-side. That table is one row per user: an address and an account
+id that user already owns. No memory content, no people, no claims, no keys. The
+book stays in the user's own encrypted, revocable Walrus account, and deleting
+every row loses no memories. With the database unset the app still runs on the
+session cookie alone, which covers one browser.
 
 ## What is next
 
