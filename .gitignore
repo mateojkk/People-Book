@@ -39,3 +39,6 @@ demo_script.md
 .env
 .vercel
 dist/
+
+# build output — Vercel builds this, it is not source
+dist/
