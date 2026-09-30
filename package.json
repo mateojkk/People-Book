@@ -13,7 +13,8 @@
     "keygen": "tsx scripts/generate-delegate-key.ts",
     "verify": "npm run verify:codec && npm run verify:rank",
     "verify:codec": "tsx scripts/verify-memory-codec.ts",
-    "verify:rank": "tsx scripts/verify-ranking.ts"
+    "verify:rank": "tsx scripts/verify-ranking.ts",
+    "check:registry": "tsx scripts/check-registry.ts"
   },
   "dependencies": {
     "@google/genai": "^1.30.0",
