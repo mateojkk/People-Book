@@ -1,0 +1,202 @@
+/**
+ * Codec verification. `npm run verify`
+ *
+ * The codec is the one place where a silent bug would corrupt the ledger in a
+ * way nobody notices until a claim has already been shown to a user as fact.
+ * So it is checked directly rather than trusted: round trips, hand-built
+ * corruption, the append-only collapse rule, and the tombstones.
+ */
+
+import {
+  collapseById,
+  isLive,
+  makeMemory,
+  makeMemoryId,
+  parseMemory,
+  serializeMemory,
+  toDisplayText,
+  todayISO,
+} from "../shared/memory-codec.ts";
+import { type PersonMemory } from "../shared/types.ts";
+
+let failures = 0;
+
+function check(name: string, condition: boolean, detail?: unknown) {
+  if (condition) {
+    console.log(`  ok   ${name}`);
+  } else {
+    failures += 1;
+    console.log(`  FAIL ${name}`, detail === undefined ? "" : detail);
+  }
+}
+
+function section(name: string) {
+  console.log(`\n${name}`);
+}
+
+// ─── Round trip ──────────────────────────────────────────────────────────────
+section("round trip");
+
+const at = new Date("2026-03-14T10:00:00.000Z");
+const promise = makeMemory({
+  person: "Maya",
+  type: "promise",
+  text: "I told Maya I'd find the thing from the shop.",
+  dueAt: "2026-09-30",
+  occurredAt: "2026-03-14",
+  confidence: "confirmed",
+  now: at,
+});
+
+const roundTripped = parseMemory(serializeMemory(promise));
+// Compared field by field rather than by JSON.stringify: serialisation puts
+// `text` last (it is the part before the sentinel) while makeMemory returns it
+// in the middle, so the objects are equal but their key order is not.
+check(
+  "round trips every field",
+  roundTripped !== null &&
+    Object.entries(promise).every(([k, v]) => (roundTripped as unknown as Record<string, unknown>)[k] === v) &&
+    Object.keys(roundTripped).length === Object.keys(promise).length,
+  { got: roundTripped },
+);
+check("claim leads the stored text", serializeMemory(promise).startsWith("I told Maya"));
+check("claim survives display stripping", toDisplayText(serializeMemory(promise)) === promise.text);
+
+// ─── Every type and status round trips ───────────────────────────────────────
+section("all types and statuses");
+
+for (const type of ["trait", "event", "promise", "taboo", "howto", "update"] as const) {
+  for (const status of ["open", "kept", "missed", "settled", "active"] as const) {
+    const m = makeMemory({ person: "Sam", type, status, text: `${type}/${status} claim`, now: at });
+    const back = parseMemory(serializeMemory(m));
+    check(`${type}/${status}`, back?.type === type && back?.status === status);
+  }
+}
+
+// ─── Optional fields are omitted, not written as null ───────────────────────
+section("optional fields");
+
+const bare = makeMemory({ person: "you", type: "trait", text: "I am a night person.", now: at });
+const bareBlob = serializeMemory(bare);
+check("no dueAt key when absent", !bareBlob.includes('"dueAt"'));
+check("no null litter", !bareBlob.includes("null"));
+check("no verbatim key by default", !bareBlob.includes('"verbatim"'));
+check("defaults to inferred", bare.confidence === "inferred");
+check("promise defaults to open", makeMemory({ person: "Maya", type: "promise", text: "x" }).status === "open");
+
+const withVerbatim = makeMemory({ person: "Maya", type: "event", text: "She moved.", verbatim: "i think she moved to lisbon", now: at });
+check("verbatim round trips", parseMemory(serializeMemory(withVerbatim))?.verbatim === "i think she moved to lisbon");
+
+// ─── Corruption must produce null, never a partial object ───────────────────
+section("corruption is rejected, not half-decoded");
+
+const good = serializeMemory(promise);
+check("foreign blob", parseMemory("just some notes about my week") === null);
+check("empty string", parseMemory("") === null);
+check("truncated JSON", parseMemory(`${promise.text}\n@@pb1@@{"id":"mem_1"`) === null);
+check("wrong sentinel", parseMemory(`${promise.text}\n@@pb2@@{"id":"mem_1","person":"x","type":"trait","status":"active","confidence":"confirmed","createdAt":"x","updatedAt":"x"}`) === null);
+check("unknown type", parseMemory(promise.text + `\n@@pb1@@{"id":"m","person":"x","type":"gossip","status":"active","confidence":"confirmed","createdAt":"x","updatedAt":"x"}`) === null);
+check("bad confidence", parseMemory(promise.text + `\n@@pb1@@{"id":"m","person":"x","type":"trait","status":"active","confidence":"pretty_sure","createdAt":"x","updatedAt":"x"}`) === null);
+check("bad date", parseMemory(promise.text + `\n@@pb1@@{"id":"m","person":"x","type":"trait","status":"active","confidence":"confirmed","dueAt":"next tuesday","createdAt":"x","updatedAt":"x"}`) === null);
+check("missing person", parseMemory(promise.text + `\n@@pb1@@{"id":"m","type":"trait","status":"active","confidence":"confirmed","createdAt":"x","updatedAt":"x"}`) === null);
+check("empty claim", parseMemory(`\n@@pb1@@{"id":"m","person":"x","type":"trait","status":"active","confidence":"confirmed","createdAt":"x","updatedAt":"x"}`) === null);
+check("not a string", parseMemory(undefined as unknown as string) === null);
+
+// A claim that legitimately contains the sentinel must still parse, and must
+// keep its full text — this is why parse uses the LAST sentinel.
+section("sentinel inside a claim");
+
+const tricky = makeMemory({
+  person: "Dev",
+  type: "howto",
+  text: "He literally signs his emails with @@pb1@@ in them, don't strip it.",
+  now: at,
+});
+const trickyBack = parseMemory(serializeMemory(tricky));
+check("keeps full text when claim contains the sentinel", trickyBack?.text === tricky.text, trickyBack?.text);
+check("keeps good blobs unaffected", parseMemory(good)?.id === promise.id);
+
+// ─── Append-only collapse ───────────────────────────────────────────────────
+section("append-only collapse");
+
+const older: PersonMemory = { ...promise, status: "open", updatedAt: "2026-03-14T10:00:00.000Z" };
+const newer: PersonMemory = { ...promise, status: "kept", updatedAt: "2026-04-01T09:00:00.000Z" };
+const collapsed = collapseById([newer, older]);
+check("newest write per id wins", collapsed.length === 1 && collapsed[0]?.status === "kept");
+check("unrelated ids all survive", collapseById([older, { ...newer, id: "mem_other" }]).length === 2);
+
+// MemWal returns blobs in RELEVANCE order, not write order, so the fold must be
+// order-independent. `rev` is what guarantees that.
+const tieA: PersonMemory = { ...promise, rev: 2, status: "open", updatedAt: "2026-05-05T12:00:00.000Z" };
+const tieB: PersonMemory = { ...promise, rev: 3, status: "kept", updatedAt: "2026-05-05T12:00:00.000Z" };
+check("higher rev wins regardless of order", collapseById([tieB, tieA])[0]?.status === "kept");
+check("higher rev wins from the other side too", collapseById([tieA, tieB])[0]?.status === "kept");
+
+const shard: PersonMemory = { ...promise, rev: 5, status: "kept", updatedAt: "2026-05-05T12:00:00.000Z" };
+check(
+  "collapse is order-independent across permutations",
+  [tieB, tieA, shard].map((m) => m.id).length === 3 &&
+    collapseById([tieA, tieB, shard])[0]?.status === collapseById([shard, tieA, tieB])[0]?.status &&
+    collapseById([tieB, shard, tieA])[0]?.status === collapseById([tieA, tieB, shard])[0]?.status,
+);
+
+// A blob written before `rev` existed must still load rather than vanish.
+const preRev = serializeMemory(promise).replace('"rev":1,', "");
+check("legacy blob without rev still parses", parseMemory(preRev)?.rev === 1);
+check("legacy blob keeps its content", parseMemory(preRev)?.text === promise.text);
+
+// ─── Tombstones ─────────────────────────────────────────────────────────────
+section("tombstones");
+
+const dead: PersonMemory = { ...promise, deleted: true, updatedAt: "2026-09-01T10:00:00.000Z" };
+const grave = serializeMemory(dead);
+check("tombstone round trips", parseMemory(grave)?.deleted === true);
+check("tombstone is not live", !isLive(parseMemory(grave)!));
+check("live memory is live", isLive(parseMemory(good)!));
+check("a tombstone supersedes its live version", !isLive(collapseById([dead, promise])[0]!));
+check("history is preserved alongside the grave", collapseById([dead, promise]).length === 1);
+
+// ─── Refusals ───────────────────────────────────────────────────────────────
+section("refusals");
+
+let threwNoPerson = false;
+try {
+  makeMemory({ person: "   ", type: "trait", text: "anonymous claim" });
+} catch {
+  threwNoPerson = true;
+}
+check("refuses a subjectless claim", threwNoPerson);
+
+let threwNoText = false;
+try {
+  makeMemory({ person: "Maya", type: "trait", text: "  " });
+} catch {
+  threwNoText = true;
+}
+check("refuses an empty claim", threwNoText);
+
+let threwBadType = false;
+try {
+  // @ts-expect-error deliberately wrong
+  makeMemory({ person: "Maya", type: "rumour", text: "x" });
+} catch {
+  threwBadType = true;
+}
+check("refuses an unknown type", threwBadType);
+
+// ─── Ids and dates ──────────────────────────────────────────────────────────
+section("ids and dates");
+
+const ids = new Set(Array.from({ length: 500 }, () => makeMemoryId()));
+check("ids are unique", ids.size === 500);
+check("ids are prefixed", [...ids].every((id) => id.startsWith("mem_")));
+check("todayISO is a bare date", /^\d{4}-\d{2}-\d{2}$/.test(todayISO()));
+check("todayISO matches the supplied instant", todayISO(new Date("2026-10-09T23:59:00.000Z")) === "2026-10-09");
+
+// ─── Result ─────────────────────────────────────────────────────────────────
+console.log("");
+if (failures > 0) {
+  console.log(`${failures} check(s) FAILED`);
+  process.exit(1);
+}
+console.log("all checks passed");

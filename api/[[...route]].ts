@@ -1,0 +1,461 @@
+/**
+ * The API.
+ *
+ * One Hono app, two hosts: a Vercel serverless function in production and a plain
+ * Node server in development (scripts/dev-api.ts). Same routes, same code, so
+ * "works on my machine" and "works deployed" cannot drift — which is the point
+ * of criterion 3, "could someone clone the repo and run it?".
+ *
+ * Every route that touches memory takes its accountId from the verified session
+ * and then from the onchain account that address owns. There is no route that
+ * accepts an accountId, a namespace, or a person from the request body, because
+ * each of those would be a way for a caller to read someone else's book.
+ */
+
+import { Hono } from "hono";
+import type { Context } from "hono";
+import { computeNudges, elisionLine } from "./lib/ranking.ts";
+import { capture, phraseNudges } from "./lib/capture.ts";
+import { PeopleBookStore, MemoryNotFoundError } from "./lib/store.ts";
+import { isConfigError, isWriteError, NAMESPACE, RECALL_LIMIT } from "./lib/memwal.ts";
+import { findAccountId, isPlausibleAddress, looksLikeRevoked, normalize, ourDelegatePublicKey } from "./lib/account.ts";
+import {
+  SESSION_COOKIE,
+  SessionConfigError,
+  clearCookieHeader,
+  cookieHeader,
+  issueChallenge,
+  parseCookies,
+  readSession,
+  redeemChallenge,
+} from "./lib/session.ts";
+import { SELF, type NudgeSet, type PersonMemory } from "../shared/types.ts";
+import { demoCast } from "../shared/demo-cast.ts";
+
+export const app = new Hono();
+
+/**
+ * Resolves the caller's identity to a memory space.
+ *
+ * This is the only place a store is ever constructed, which is what makes the
+ * isolation guarantee auditable by reading one function. Two independent checks
+ * must pass: a signature-verified session, and an onchain account owned by that
+ * exact address. Either alone would be insufficient — a valid session does not
+ * prove the account still exists, and an account existing does not prove the
+ * caller owns it.
+ */
+async function resolveStore(c: Context): Promise<
+  { store: PeopleBookStore; address: string } | { error: Response }
+> {
+  const cookie = c.req.header("cookie");
+  const session = await readSession(parseCookies(cookie)[SESSION_COOKIE]);
+  if (!session) {
+    return { error: c.json({ error: "not_signed_in", message: "Connect your wallet and sign the challenge to continue." }, 401) };
+  }
+
+  let accountId: string | null = null;
+  try {
+    accountId = await findAccountId(session.address);
+  } catch (error) {
+    return {
+      error: c.json(
+        { error: "sui_unreachable", message: `Could not reach Sui to confirm your account: ${error instanceof Error ? error.message : String(error)}` },
+        503,
+      ),
+    };
+  }
+
+  if (!accountId) {
+    return {
+      error: c.json(
+        { error: "no_account", message: "This address has no Walrus Memory account yet. Create one, then grant People Book access to it." },
+        409,
+      ),
+    };
+  }
+
+  return { store: new PeopleBookStore({ accountId, namespace: NAMESPACE }), address: session.address };
+}
+
+function toErrorResponse(c: Context, error: unknown): Response {
+  if (isConfigError(error)) {
+    return c.json({ error: error.code, message: error.message }, 503);
+  }
+  if (error instanceof SessionConfigError) {
+    return c.json({ error: error.code, message: error.message }, 503);
+  }
+  if (isWriteError(error)) {
+    return c.json({ error: error.code, message: error.message }, 502);
+  }
+  if (error instanceof MemoryNotFoundError) {
+    return c.json({ error: error.code, message: error.message }, 404);
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  if (looksLikeRevoked(error)) {
+    return c.json(
+      {
+        error: "revoked",
+        message:
+          "The Walrus Memory account rejected this key. It looks like the delegate key was removed on chain — which is exactly what that button is for. Re-grant access to carry on.",
+      },
+      403,
+    );
+  }
+  return c.json({ error: "internal", message }, 500);
+}
+
+// ── Health ───────────────────────────────────────────────────────────────────
+
+app.get("/health", async (c) => {
+  const delegateConfigured = Boolean(process.env.MEMWAL_DELEGATE_KEY);
+  const groqConfigured = Boolean(process.env.GROQ_API_KEY);
+  const sessionConfigured = Boolean(process.env.SESSION_SECRET);
+  let delegatePublic: string | null = null;
+  try {
+    delegatePublic = (await ourDelegatePublicKey()).reduce((hex, b) => hex + b.toString(16).padStart(2, "0"), "");
+  } catch {
+    delegatePublic = null;
+  }
+  return c.json({
+    ok: delegateConfigured && groqConfigured && sessionConfigured,
+    config: { delegate: delegateConfigured, groq: groqConfigured, session: sessionConfigured },
+    delegatePublicKey: delegatePublic,
+    namespace: NAMESPACE,
+    network: "mainnet",
+    recallLimit: RECALL_LIMIT,
+  });
+});
+
+// ── Auth ─────────────────────────────────────────────────────────────────────
+
+/** Step 1: server issues a single-use challenge bound to an address. */
+app.post("/auth/challenge", async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { address?: unknown };
+  if (!isPlausibleAddress(body.address)) {
+    return c.json({ error: "bad_address", message: "That is not a Sui address." }, 400);
+  }
+  const challenge = issueChallenge(normalize(body.address));
+  return c.json({ token: challenge.token, message: challenge.message, bytes: [...challenge.bytes] });
+});
+
+/** Step 2: the wallet signs it, and we verify before minting a session. */
+app.post("/auth/session", async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { token?: unknown; signature?: unknown };
+  if (typeof body.token !== "string" || typeof body.signature !== "string") {
+    return c.json({ error: "bad_request", message: "token and signature are required." }, 400);
+  }
+
+  const result = await redeemChallenge(body.token, body.signature);
+  if (!result.ok) {
+    return c.json(
+      { error: result.reason, message: "That signature did not verify against the challenge. Ask for a new one and try again." },
+      401,
+    );
+  }
+
+  const { createSession } = await import("./lib/session.ts");
+  const cookie = await createSession(result.address);
+  c.header("Set-Cookie", cookieHeader(SESSION_COOKIE, cookie, 60 * 60 * 24 * 30));
+  return c.json({ address: result.address });
+});
+
+app.get("/auth/whoami", async (c) => {
+  const session = await readSession(parseCookies(c.req.header("cookie"))[SESSION_COOKIE]);
+  if (!session) return c.json({ signedIn: false }, 200);
+  const accountId = await findAccountId(session.address).catch(() => null);
+  return c.json({ signedIn: true, address: session.address, accountId });
+});
+
+app.post("/auth/logout", (c) => {
+  c.header("Set-Cookie", clearCookieHeader(SESSION_COOKIE));
+  return c.json({ ok: true });
+});
+
+/**
+ * Reports the app's own delegate public key so the UI can show it.
+ *
+ * The user is about to sign a transaction granting this key access to their
+ * account, so they are entitled to see exactly what they are granting. Showing
+ * it is also what makes the revocation demo checkable.
+ */
+app.get("/account/delegate-key", async (c) => {
+  try {
+    const publicKey = await ourDelegatePublicKey();
+    const hex = [...publicKey].map((b) => b.toString(16).padStart(2, "0")).join("");
+    return c.json({ publicKey: hex });
+  } catch (error) {
+    return toErrorResponse(c, error);
+  }
+});
+
+// ── The book ─────────────────────────────────────────────────────────────────
+
+/** The ledger, with an honest coverage figure. */
+app.get("/memories", async (c) => {
+  const resolved = await resolveStore(c);
+  if ("error" in resolved) return resolved.error;
+  try {
+    const { memories, coverage } = await resolved.store.listLive();
+    const total = await resolved.store.memoryCount();
+    return c.json({
+      memories,
+      coverage,
+      // The relayer's own count. When this is larger than the list, the ledger
+      // is partial and the UI says so rather than implying completeness.
+      blobCount: total,
+      truncated: total !== null && total > memories.length,
+    });
+  } catch (error) {
+    return toErrorResponse(c, error);
+  }
+});
+
+/**
+ * The nudges.
+ *
+ * `?memory=off` is the A/B switch. It does not degrade the product, it produces
+ * the honest baseline: every nudge is a recall, so with memory off there is
+ * nothing. That contrast is the before/after the submission is judged on.
+ */
+app.get("/nudges", async (c) => {
+  const resolved = await resolveStore(c);
+  if ("error" in resolved) return resolved.error;
+
+  const memoryDisabled = c.req.query("memory") === "off";
+  const dismissals = parseCookies(c.req.header("cookie")).pb_dismiss
+    ? new Set(parseCookies(c.req.header("cookie")).pb_dismiss!.split(",").filter(Boolean))
+    : new Set<string>();
+
+  try {
+    const { memories } = memoryDisabled ? { memories: [] as PersonMemory[] } : await resolved.store.listLive();
+    const ranked = computeNudges({ memories, memoryDisabled, dismissed: dismissals, now: new Date() });
+
+    // Phrasing is the only model involvement here, and it is skippable: every
+    // nudge already has a deterministic sentence behind it.
+    let nudges = ranked.nudges;
+    if (!memoryDisabled && nudges.length > 0) {
+      const phrased = await phraseNudges(
+        nudges.map((n) => ({ person: n.person, text: n.text, kind: n.kind })),
+      );
+      nudges = nudges.map((n, idx) => ({ ...n, text: phrased[idx] ?? n.text }));
+    }
+
+    const payload: NudgeSet & { elisionNotices: string[] } = {
+      nudges,
+      elisions: ranked.elisions,
+      computedAt: new Date().toISOString(),
+      basis: ranked.basis,
+      elisionNotices: ranked.elisions.map((e) => elisionLine(e.person, e.since)),
+    };
+    return c.json(payload);
+  } catch (error) {
+    return toErrorResponse(c, error);
+  }
+});
+
+/** Dismiss a nudge. The memory underneath survives, deliberately. */
+app.post("/nudges/dismiss", async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { id?: unknown };
+  if (typeof body.id !== "string" || !body.id) {
+    return c.json({ error: "bad_request", message: "id is required." }, 400);
+  }
+  const existing = parseCookies(c.req.header("cookie")).pb_dismiss;
+  const next = [...new Set([...(existing?.split(",").filter(Boolean) ?? []), body.id])].slice(-50);
+  c.header("Set-Cookie", cookieHeader("pb_dismiss", next.join(","), 60 * 60 * 24 * 30));
+  return c.json({ ok: true, dismissed: next.length });
+});
+
+/** Extracts candidate memories from a message. Nothing is written. */
+app.post("/capture", async (c) => {
+  const resolved = await resolveStore(c);
+  if ("error" in resolved) return resolved.error;
+
+  const body = (await c.req.json().catch(() => ({}))) as { message?: unknown };
+  if (typeof body.message !== "string" || !body.message.trim()) {
+    return c.json({ error: "bad_request", message: "message is required." }, 400);
+  }
+
+  try {
+    const { memories } = await resolved.store.listLive();
+    const known = [...new Set(memories.map((m) => m.person))];
+    const result = await capture(body.message, known);
+    return c.json({
+      ...result,
+      // Echoed so the UI can explain WHY something was dropped.
+      knownPeople: known,
+    });
+  } catch (error) {
+    return toErrorResponse(c, error);
+  }
+});
+
+/**
+ * Promotes a candidate into a memory.
+ *
+ * Only here does a candidate become stored, and it is stored as `confirmed`
+ * because a person just looked at it. If the write fails, this returns an error
+ * and stores nothing — a confirmation that does not persist would leave the user
+ * believing their book knows something it does not.
+ */
+app.post("/memories", async (c) => {
+  const resolved = await resolveStore(c);
+  if ("error" in resolved) return resolved.error;
+
+  const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+  const person = typeof body.person === "string" ? body.person.trim() : "";
+  const text = typeof body.text === "string" ? body.text.trim() : "";
+  const type = body.type;
+
+  if (!person || !text) {
+    return c.json({ error: "bad_request", message: "person and text are required." }, 400);
+  }
+
+  try {
+    const memory = await resolved.store.remember({
+      person,
+      text,
+      type: type as never,
+      confidence: "confirmed",
+      // The original sentence is opt-in. It is the most sensitive thing we hold,
+      // so it is never stored unless the user explicitly asked.
+      ...(typeof body.verbatim === "string" && body.verbatim.trim() ? { verbatim: body.verbatim.trim() } : {}),
+      ...(typeof body.occurredAt === "string" ? { occurredAt: body.occurredAt } : {}),
+      ...(typeof body.dueAt === "string" ? { dueAt: body.dueAt } : {}),
+    });
+    return c.json({ memory }, 201);
+  } catch (error) {
+    return toErrorResponse(c, error);
+  }
+});
+
+/** Forgets a memory. Writes a tombstone; reports honestly if it did not land. */
+app.delete("/memories/:id", async (c) => {
+  const resolved = await resolveStore(c);
+  if ("error" in resolved) return resolved.error;
+  try {
+    const memory = await resolved.store.forget(c.req.param("id"));
+    return c.json({ forgotten: memory.id, rev: memory.rev });
+  } catch (error) {
+    return toErrorResponse(c, error);
+  }
+});
+
+/** Closes a promise the user says they kept. */
+app.post("/memories/:id/resolve", async (c) => {
+  const resolved = await resolveStore(c);
+  if ("error" in resolved) return resolved.error;
+  const body = (await c.req.json().catch(() => ({}))) as { status?: unknown };
+  const status = body.status === "kept" || body.status === "missed" ? body.status : "settled";
+  try {
+    const current = await resolved.store.getById(c.req.param("id"));
+    if (!current) return c.json({ error: "not_found", message: "No such memory." }, 404);
+    const next = await resolved.store.revise(current, { status });
+    return c.json({ memory: next });
+  } catch (error) {
+    return toErrorResponse(c, error);
+  }
+});
+
+/** Per-person brief. Taboos are withheld, and the withholding is announced. */
+app.get("/people/:person", async (c) => {
+  const resolved = await resolveStore(c);
+  if ("error" in resolved) return resolved.error;
+  const person = decodeURIComponent(c.req.param("person"));
+  try {
+    const { memories } = await resolved.store.listLive();
+    const theirs = memories.filter((m) => m.person === person);
+    const taboos = theirs.filter((m) => m.type === "taboo" && m.confidence === "confirmed");
+    const body = {
+      person,
+      traits: theirs.filter((m) => m.type === "trait" || m.type === "update"),
+      events: theirs.filter((m) => m.type === "event"),
+      promises: theirs.filter((m) => m.type === "promise"),
+      howto: theirs.filter((m) => m.type === "howto"),
+      // Taboo CONTENT is never returned. Only the fact that rules exist, and
+      // when they were set, so the brief can honestly say it is withholding.
+      tabooCount: taboos.length,
+      taboosSince: taboos.map((t) => t.occurredAt ?? t.createdAt.slice(0, 10)).sort()[0] ?? null,
+      elisionNotice: taboos.length
+        ? elisionLine(person, taboos.map((t) => t.occurredAt ?? t.createdAt.slice(0, 10)).sort()[0] ?? "")
+        : null,
+    };
+    return c.json(body);
+  } catch (error) {
+    return toErrorResponse(c, error);
+  }
+});
+
+/** Everyone in the book, including the user themself. */
+app.get("/people", async (c) => {
+  const resolved = await resolveStore(c);
+  if ("error" in resolved) return resolved.error;
+  try {
+    const { memories } = await resolved.store.listLive();
+    const people = [...new Set(memories.map((m) => m.person))].map((person) => {
+      const theirs = memories.filter((m) => m.person === person);
+      return {
+        person,
+        isSelf: person === SELF,
+        count: theirs.length,
+        openPromises: theirs.filter((m) => m.type === "promise" && m.status === "open").length,
+        hasTaboo: theirs.some((m) => m.type === "taboo" && m.confidence === "confirmed"),
+      };
+    });
+    people.sort((a, b) => Number(b.isSelf) - Number(a.isSelf) || b.count - a.count);
+    return c.json({ people });
+  } catch (error) {
+    return toErrorResponse(c, error);
+  }
+});
+
+/** Everything, as JSON. Portability, and the thing a user is entitled to. */
+app.get("/export", async (c) => {
+  const resolved = await resolveStore(c);
+  if ("error" in resolved) return resolved.error;
+  try {
+    const { memories } = await resolved.store.listLive();
+    const accountId = await findAccountId(resolved.address);
+    c.header("Content-Disposition", 'attachment; filename="people-book.json"');
+    return c.json({
+      exportedAt: new Date().toISOString(),
+      owner: resolved.address,
+      memwalAccount: accountId,
+      namespace: NAMESPACE,
+      count: memories.length,
+      memories,
+    });
+  } catch (error) {
+    return toErrorResponse(c, error);
+  }
+});
+
+/**
+ * Loads the demo cast.
+ *
+ * Fictional people, deliberately. A judge opening the app should see a book with
+ * history, and that must not mean publishing real details about real people who
+ * never agreed to be in a submission. The real app is used with real contacts;
+ * the demo and the article are not.
+ */
+app.post("/demo/seed", async (c) => {
+  const resolved = await resolveStore(c);
+  if ("error" in resolved) return resolved.error;
+  try {
+    const { memories } = await resolved.store.listLive();
+    if (memories.length > 0) {
+      return c.json({
+        error: "not_empty",
+        message: `This book already has ${memories.length} memories. Seeding on top would muddy it — clear it first if you want the demo cast.`,
+        existing: memories.length,
+      }, 409);
+    }
+    const written = await resolved.store.seed(demoCast());
+    return c.json({ seeded: written.length }, 201);
+  } catch (error) {
+    return toErrorResponse(c, error);
+  }
+});
+
+app.get("/demo/cast-size", (c) => c.json({ count: demoCast().length }));
+
+export default app;

@@ -34,3 +34,8 @@ env/
 test_*.py
 submission.md
 demo_script.md
+
+# People Book
+.env
+.vercel
+dist/
