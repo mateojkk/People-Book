@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <rect width="32" height="32" rx="7" fill="#0d0f12"/>
+  <!-- An open book: two people, held. Deliberately abstract so it reads at 16px. -->
+  <path d="M16 9.5c-2.1-1.6-4.4-2.2-7-2.2a1 1 0 0 0-1 1v13.4a1 1 0 0 0 1 1c2.6 0 4.9.6 7 2.2 2.1-1.6 4.4-2.2 7-2.2a1 1 0 0 0 1-1V8.3a1 1 0 0 0-1-1c-2.6 0-4.9.6-7 2.2Z"
+        fill="none" stroke="#6ee7b7" stroke-width="1.7" stroke-linejoin="round"/>
+  <path d="M16 9.5v15" stroke="#6ee7b7" stroke-width="1.7" stroke-linecap="round"/>
+  <!-- A single held-back mark: the elision the product is honest about. -->
+  <circle cx="16" cy="6.2" r="2.1" fill="none" stroke="#fbbf6e" stroke-width="1.7"/>
+  <path d="M16 5.1v2.2" stroke="#fbbf6e" stroke-width="1.7" stroke-linecap="round"/>
+</svg>
