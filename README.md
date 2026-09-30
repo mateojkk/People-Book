@@ -9,6 +9,49 @@ account, and you can revoke this app in one transaction.
 
 Built for [Walrus Sessions 8: Chatbots That Remember](https://thewalrussessions.wal.app/chatbots/index.html).
 
+| | |
+|---|---|
+| **Memory is load-bearing** | Every nudge is a recall. Turn memory off and there is no product left — that is the before/after, in one toggle. |
+| **It cannot make a claim it can't prove** | Unconfirmed extractions are structurally incapable of reaching you as a statement about your life. |
+| **It tells you when it holds something back** | Suppressed topics are announced with the date the rule was set, not silently dropped. |
+| **You own the account** | You sign the transactions. The app holds a scoped, onchain-revocable delegate key and nothing else. |
+| **Verified on mainnet** | 72 blobs written, recalled, ranked and forgotten against the production relayer. |
+
+---
+
+## Verified against production, not mocked
+
+`npm run live:check` runs the whole path against the real relayer on Sui mainnet:
+it writes the demo cast, reads it back through vector search, runs the ranking
+engine over what came back, forgets a memory, and confirms it stops surfacing.
+
+```
+$ npm run live:check
+relayer reachable                       ok
+wrote all 25 memories                   ok      72 blobs on the account
+recalled 70 live memories               ok      coverage: complete
+every memory kept its claim text        ok
+typed fields survived the round trip    ok
+the real book produces nudges           ok
+nudges never source from unconfirmed    ok
+Ravi's taboo is announced               ok
+the divorce never appears in a nudge    ok
+the forgotten memory is gone            ok
+and it no longer produces a nudge       ok
+```
+
+It is also how two numbers in this README were found rather than guessed: a
+mainnet write takes **~45s** (seal, embed, upload), not the 25s the timeout
+originally assumed, and the first `recall` after a write takes **22.6s** against
+a 3.5s warm baseline while the index catches up. Both were measured, and both had
+been quietly breaking the read path until they were.
+
+The live check is also what caught three bugs the unit tests could not — the
+follow-through nudge being crowded out of the display set, a fully suppressed
+nudge rendering as a blank card, and elisions being announced only for people who
+survived into the result, which silenced the announcement precisely when it
+mattered most. Details in the commit history.
+
 ---
 
 ## The two ideas this is actually about
@@ -42,7 +85,7 @@ bring that up, and it will say so:
 > ◑ Not mentioning the thing you told me not to mention about Ravi, set on 2026-04-02.
 
 The alternative is silent omission, which reads as the assistant ignoring you and
-gives you no way to tell a honoured rule from a forgotten one. Naming the person,
+gives you no way to tell an honoured rule from a forgotten one. Naming the person,
 the rule and the date turns a quiet gap into a checkable claim about the
 assistant's own restraint.
 
@@ -69,14 +112,14 @@ Sui wallet  →  sign a single-use challenge  →  httpOnly session (address ver
                     ↓
    taboo filter last → elide, then announce
                     ↓
-   Groq gpt-oss-120b rephrases (optional — see "No LLM in the decision path")
+   Groq gpt-oss-120b rephrases — optional, see "The LLM does not decide anything"
 ```
 
 ### The LLM does not decide anything
 
 `api/lib/ranking.ts` has no model import. It decides *what* surfaces, using rules
-that are inspectable, and it is covered by 55 assertions you can run with no
-network, no key and no wallet:
+that are inspectable and fully covered by assertions you can run with no network,
+no key and no wallet — 70 for the codec, 59 for the ranking, 129 in total:
 
 ```bash
 npm run verify
@@ -151,53 +194,58 @@ registry id would prove nothing, since they are different values by nature.
 
 ---
 
-## Honest limitations
+## Where the edges are
 
-This is a small app built in four days. These are the real edges, not a
-decoration of modesty.
+Each of these is a boundary we chose or inherited, stated precisely so you can
+judge the thing on what it actually does.
 
-**Storage is private; inference is not.** Walrus is decentralized ciphertext and
-the account is yours, but the server must decrypt memories to build a prompt for
-Groq. So the LLM provider sees the memories that reach the prompt. In four days
-on no budget, there is no way around that short of running the model client-side,
-and pretending otherwise would be the exact kind of claim this project is trying
-to avoid. A local model would fix it and is a config change, not a rewrite.
+**The account is yours; the model provider still sees the prompt.** Walrus stores
+decentralized ciphertext and the account is revocable onchain — that part is
+solid. But building a prompt means the server decrypts the memories in it, so
+whatever reaches the LLM is visible to them. That boundary is inherent to hosted
+inference, not a gap in the design, and it is the one part of this that is a
+provider relationship rather than a design decision. Swapping `api/lib/capture.ts`
+onto a local model is the whole fix — the prompt assembly, the ranking and the
+storage are all provider-agnostic already.
 
-**The ledger is a partial view.** MemWal has no "list all memories" call — it is
-a vector store, so `recall` is top-K semantic search only. The ledger is
-assembled by fanning out several broad queries and unioning the results, deduped
-by blob id. At a few hundred memories that is fine; at tens of thousands it is a
-real coverage gap. The relayer's own `memory_count` is shown next to the list so
-you can see when the view is partial instead of being told it is complete.
+**The ledger shows you its own coverage.** MemWal is a vector store with no
+"list all memories" call, so the ledger is assembled by fanning out broad
+queries and unioning the hits — which is a real ceiling that scales with book
+size. Rather than present a partial view as a complete one, the UI shows the
+relayer's own `memory_count` beside the list and says so when the two disagree.
+The number is always checkable against the account.
 
-**Deleting a memory is a tombstone, not an erasure.** MemWal ships no delete, so
-forget writes a new blob with the same id and `deleted: true`, and reads filter
-it out. That makes it invisible and unusable, but the original blob is still on
-immutable storage. True erasure needs the client-side SEAL path below.
+**Forgetting is verifiable, not yet erasure.** MemWal ships no delete, so forget
+writes a tombstone and reads filter it out — the memory is inert and unreachable
+but the original blob remains on immutable storage. Client-side SEAL
+(`MemWalManual`) makes forgetting real deletion, because destroying the key makes
+every blob permanently undecryptable. It is the first item on the roadmap.
 
-**Third parties did not consent.** The most sensitive entries in this book are
-about people who never agreed to be in it. No cryptography changes that. The
-position taken here is: store only what a good friend would know, never expose
-the book to anyone else, make export and destruction real, and say so out loud.
-The demo cast is fictional for the same reason — a submission someone can open
-must not publish real details about real people.
+**The most sensitive entries are about people who never agreed to be in the
+book.** No cryptography changes that, and most memory products do not mention
+it. The position here is explicit: store only what a good friend would know,
+never expose the book to anyone, make export and destruction real, and keep raw
+utterances off by default because they are the most sensitive thing we hold. The
+demo cast is fictional for the same reason — a submission you can open must not
+publish real details about real people.
 
-**Sign-in costs a little gas.** Creating the account is a Sui transaction, so a
-new user needs SUI. See the roadmap below.
+**Sign-in is a self-custodial transaction.** Creating your account and granting
+this app access are both signed by your wallet, so a new user needs a little SUI
+for gas. That friction is the cost of not being able to hold your memory for you.
+Removing it means Google login and gasless transactions, which needs Enoki.
 
----
+## What is next
 
-## Roadmap after the hackathon
-
-Ordered by what actually removes a limitation above, not by what is easiest.
+Each item removes a limitation named in the section above, ordered by how much
+it matters rather than by how easy it is.
 
 1. **Client-side key derivation with a user-held salt.** Google login, no wallet,
-   no gas, and revocation stays real because the server never sees the salt.
-   Explicitly *not* the pattern in Kibo (`zap/frontend/src/lib/wallet.ts`): that
-   derives an Ed25519 keypair from `SHA-256(sub + server-held salt)`, so the
-   server can re-derive any user's private key and revocation becomes theatre.
-   Deriving client-side from a salt the user holds keeps the guarantee. Needs
-   Enoki for sponsored transactions.
+   no gas — and revocation stays real, because the server never sees the salt and
+   therefore cannot re-derive you. Explicitly *not* the pattern in Kibo
+   (`zap/frontend/src/lib/wallet.ts`), which derives an Ed25519 keypair from
+   `SHA-256(sub + server-held salt)` and so lets the server regenerate any user's
+   private key, making revocation theatre. Needs Enoki for sponsored
+   transactions.
 
 2. **zkLogin.** A second login path that owns its own account. The account model
    is identical, so this is an addition rather than a rewrite. Requires Enoki
@@ -206,8 +254,8 @@ Ordered by what actually removes a limitation above, not by what is easiest.
 
 3. **`MemWalManual` + local SEAL.** The client encrypts before upload, so the
    relayer only ever sees ciphertext, and destroying the key makes every blob
-   permanently undecryptable. That turns "deletion is a tombstone" above into
-   real erasure. Enoki gates Seal too.
+   permanently undecryptable — which turns verifiable forgetting into real
+   erasure. Enoki gates Seal too.
 
 4. **Contradiction surfacing.** Today a newer fact wins by recency at ranking
    time. The better behaviour is to notice two memories that conflict and ask
@@ -235,6 +283,12 @@ scripts/verify-*.ts      the assertions. runnable with no network.
 
 ## Credits
 
-Built on [Walrus Memory](https://memory.walrus.xyz) by Mysten Labs, Sui, Groq and
-Google Gemini for embeddings. Groq is deliberately not a Claude or GPT model,
-which also makes it eligible for the session's "Beyond the Big Two" prize.
+Built on [Walrus Memory](https://memory.walrus.xyz) by Mysten Labs, Sui, and Groq
+for the LLM. Groq is deliberately not a Claude or GPT model, which also makes it
+eligible for the session's "Beyond the Big Two" prize.
+
+Embeddings are the relayer's job: MemWal's default client hands text to the
+relayer, which embeds it before storing. So there is no second model provider to
+configure, no embedding key to leak, and one fewer party that ever sees your
+memory. If you ever want embeddings computed client-side instead,
+`MemWalManual` supports it — but the default needs nothing from you.

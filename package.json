@@ -14,18 +14,15 @@
     "verify": "npm run verify:codec && npm run verify:rank",
     "verify:codec": "tsx scripts/verify-memory-codec.ts",
     "verify:rank": "tsx scripts/verify-ranking.ts",
-    "check:registry": "tsx scripts/check-registry.ts"
+    "check:registry": "tsx scripts/check-registry.ts",
+    "live:check": "tsx scripts/live-memory-check.ts"
   },
   "dependencies": {
-    "@google/genai": "^1.30.0",
     "@hono/node-server": "^1.19.7",
     "@mysten-incubation/memwal": "^0.1.8",
     "@mysten/dapp-kit-react": "^2.1.37",
     "@mysten/sui": "^2.33.2",
-    "ai": "^7.0.107",
     "hono": "^4.13.12",
-    "jose": "^6.2.12",
-    "lucide-react": "^0.544.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
@@ -43,5 +40,6 @@
   },
   "allowScripts": {
     "esbuild@0.28.2": true
-  }
+  },
+  "license": "MIT"
 }
