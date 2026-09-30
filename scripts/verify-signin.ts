@@ -233,7 +233,47 @@ try {
   check("the default RPC also supports it", /invalid|protobuf|signature|epoch|proof/i.test(message), message.split("\n")[0]);
 }
 
-// ── 7. The session cookie itself ────────────────────────────────────────────
+// ── 6b. The server itself must route zkLogin signatures ────────────────────
+//
+// This block exists because of a specific failure. The zkLogin verifier was
+// written and proved working, but the tests above called the fullnode client
+// DIRECTLY, so a server still running the old code passed every one of them while
+// the browser kept getting 401. Nothing exercised the routing itself.
+//
+// So: push a zkLogin-shaped signature through the live endpoint. It must not
+// come back with the old "a Sui Client is required" message, which is the
+// fingerprint of code that never gained the fallback. A fake proof cannot be
+// accepted — and must NOT be — but it must be refused for a cryptographic
+// reason, which proves the request reached the fullnode's verifier.
+section("the SERVER routes zkLogin signatures, not just the client");
+
+const serverCh = await newChallenge(address);
+const serverSig = await kp.signPersonalMessage(new TextEncoder().encode(serverCh.message));
+const plainSigLen = serverSig.signature.length;
+const zkLen = structurallyValidZk.length;
+
+// Sanity: a plain signature must NOT be treated as zkLogin.
+const plainRouted = await redeem(serverCh.token, serverSig.signature, serverSig.bytes);
+check("a plain signature is still accepted (not misrouted)", plainRouted.status === 200, plainRouted.body);
+
+const zkCh = await newChallenge(address);
+const zkRouted = await redeem(zkCh.token, structurallyValidZk);
+check("a zkLogin signature is rejected", zkRouted.status === 401, zkRouted.status);
+
+// The decisive assertion. This exact string is what the OLD code returned, and
+// it is the fingerprint of a server that never received the fix.
+const detail = zkRouted.body.message ?? "";
+check(
+  "NOT refused with the pre-fix 'a Sui Client is required' error",
+  !/a sui client \(grpc, graphql, or json rpc\) is required/i.test(detail),
+  detail,
+);
+check(
+  "and the detail names the zkLogin proof instead",
+  /zklogin|secp|proof|signature/i.test(detail),
+  detail,
+);
+check("plain and zkLogin signatures are very different sizes", plainSigLen !== zkLen, { plainSigLen, zkLen });
 section("the session cookie is tamper-evident");
 
 const token = await createSession(address);

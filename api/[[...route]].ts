@@ -192,7 +192,9 @@ app.post("/api/auth/session", async (c) => {
     const messages: Record<string, string> = {
       unknown_challenge: "That sign-in request expired before it was used. Ask for a new one and try again.",
       expired: "That sign-in request took too long to sign. Ask for a new one and try again.",
-      bad_signature: "That signature did not verify against the challenge. Ask for a new one and try again.",
+      bad_signature: result.detail
+        ? `That signature did not verify against the challenge (${result.detail}). Ask for a new one and try again.`
+        : "That signature did not verify against the challenge. Ask for a new one and try again.",
       address_mismatch: "The address that signed is not the address the challenge was issued for.",
       message_altered: `The wallet signed a different message than the one we asked it to sign (${result.detail ?? "bytes differ"}).`,
     };
