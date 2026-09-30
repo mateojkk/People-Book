@@ -17,16 +17,16 @@
   },
   "dependencies": {
     "@google/genai": "^1.30.0",
+    "@hono/node-server": "^1.19.7",
     "@mysten-incubation/memwal": "^0.1.8",
-    "@mysten/dapp-kit": "^1.1.17",
+    "@mysten/dapp-kit-react": "^2.1.37",
     "@mysten/sui": "^2.33.2",
     "ai": "^7.0.107",
     "hono": "^4.13.12",
     "jose": "^6.2.12",
     "lucide-react": "^0.544.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "@hono/node-server": "^1.19.7"
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.1",

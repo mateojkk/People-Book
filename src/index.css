@@ -1,0 +1,45 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #0d0f12;
+  --color-surface: #14171c;
+  --color-surface-2: #1b1f26;
+  --color-line: #262b34;
+  --color-quiet: #8b95a5;
+  --color-bright: #e8ecf2;
+  --color-accent: #6ee7b7;
+  --color-warn: #fbbf6e;
+  --color-stop: #f28b82;
+  --color-link: #7cc4f8;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--color-ink);
+  color: var(--color-bright);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Every timestamp and claim in the UI is monospaced, so a nudge and the memory
+   it came from can be compared by eye without the numerals shifting width. */
+.tabular,
+code,
+.mono {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
