@@ -30,11 +30,12 @@ function section(name: string) {
 }
 
 // ─── The prefix is a boundary ────────────────────────────────────────────────
-section("the namespace is book-prefixed");
+section("the namespace is forced to 'book'");
 
 check("the prefix is 'book'", NAMESPACE_PREFIX === "book", NAMESPACE_PREFIX);
-check("the app namespace is prefixed", NAMESPACE.startsWith("book-"), NAMESPACE);
-check("the app namespace passes its own guard", assertAppNamespace(NAMESPACE) === NAMESPACE);
+check("the namespace is exactly 'book'", NAMESPACE === "book", NAMESPACE);
+check("the namespace passes its own guard", assertAppNamespace(NAMESPACE) === NAMESPACE);
+check("a book-* variant is allowed, for the live-check script", assertAppNamespace("book-livecheck") === "book-livecheck");
 
 // ─── Foreign namespaces are refused ──────────────────────────────────────────
 section("foreign namespaces are refused");
@@ -58,16 +59,17 @@ const FOREIGN = [
   "health-check",
   "kumo-global-registry",
   "agent-123",
-  // Near-misses. A prefix check that only matched the start would let these
-  // through, which is why the trailing hyphen is part of the prefix.
+  // Near-misses. The guard matches "book" exactly or "book-*", so anything that
+  // merely starts with the same letters is still refused.
   "books",
   "bookshop",
   "notebook",
   "mybook",
-  "book",
+  "books-v2",
   // A prefix check without anchoring would be fooled by these.
-  "x-book-people",
-  "../book-people",
+  "x-book",
+  "../book",
+  " book",
   "",
 ];
 

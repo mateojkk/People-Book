@@ -15,7 +15,7 @@ Built for [Walrus Sessions 8: Chatbots That Remember](https://thewalrussessions.
 | **It cannot make a claim it can't prove** | Unconfirmed extractions are structurally incapable of reaching you as a statement about your life. |
 | **It tells you when it holds something back** | Suppressed topics are announced with the date the rule was set, not silently dropped. |
 | **You own the account** | You sign the transactions. The app holds a scoped, onchain-revocable delegate key and nothing else. |
-| **Cannot touch your other memory** | One forced `book-*` namespace. No route can name another, and the store throws if asked to. |
+| **Cannot touch your other memory** | One forced namespace. No route can name another, and the store throws if asked to. |
 | **Verified on mainnet** | 72 blobs written, recalled, ranked and forgotten against the production relayer. |
 
 ---
@@ -105,7 +105,7 @@ Sui wallet  →  sign a single-use challenge  →  httpOnly session (address ver
         create_account          ← owner-signed
         add_delegate_key        ← owner-signed, scoped to that one account
                     ↓
-   Walrus Memory, namespace `book-people`, inside the USER's own account
+   Walrus Memory, namespace `book`, inside the USER's own account
                     ↓
    typed memories: person · type · status · confidence · dates · rev
                     ↓
@@ -144,21 +144,23 @@ custodian of every book it holds — the user runs the setup:
 **This app cannot read memory that is not its own.** A Walrus account can hold
 many namespaces, and a user connecting their wallet may already have memories
 there from other apps or their own use. So every read and write is confined to
-one forced namespace, `book-people`, and the `book-` prefix is the boundary:
+one forced namespace, `book`, and that name is the boundary:
 
 - no route accepts a namespace from the request — the store is constructed in
   exactly one place, from a constant
-- the store throws on any namespace outside the prefix, at construction, so a
-  bad refactor fails loudly instead of quietly reading the wrong data
+- the store throws on any namespace other than `book` or `book-*`, at
+  construction, so a bad refactor fails loudly instead of quietly reading the
+  wrong data. `bookshop` and `notebook` are refused too
 - verified against the real foreign namespace names that exist in the account
   this was developed against, plus near-misses like `bookshop` and
-  `x-book-people`, in `npm run verify:isolation`
+  `x-book`, in `npm run verify:isolation`
 
 ```bash
 $ npm run verify:isolation
 refuses "nue-memory"                    ok
 refuses "thesaintszn@gmail.com"         ok
 refuses "bookshop"                      ok
+refuses "notebook"                       ok
 store refuses "nue-memory" at construction   ok
 the store is constructed in exactly one place  ok
 all checks passed — this app cannot read memory that is not its own

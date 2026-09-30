@@ -30,19 +30,24 @@ import { MemWal } from "@mysten-incubation/memwal";
  * To change the suffix, this is the only line to touch.
  */
 export const NAMESPACE_PREFIX = "book";
-export const NAMESPACE = `${NAMESPACE_PREFIX}-people`;
+export const NAMESPACE = NAMESPACE_PREFIX;
 
 /**
- * Refuses any namespace outside this app's prefix.
+ * Refuses any namespace outside this app's own.
+ *
+ * `book` itself is the app's namespace; `book-*` is reserved for it, so the
+ * live-check script can work in `book-livecheck` without ever being able to point
+ * at somebody else's memory. The trailing hyphen matters: without it, `bookshop`
+ * and `notebook` would pass.
  *
  * Throwing rather than warning is deliberate. A namespace mistake in a memory
  * layer is not a cosmetic error: it reads or overwrites the wrong data in
  * somebody's account, and the user has no way to see that happened.
  */
 export function assertAppNamespace(namespace: string): string {
-  if (!namespace.startsWith(`${NAMESPACE_PREFIX}-`)) {
+  if (namespace !== NAMESPACE && !namespace.startsWith(`${NAMESPACE}-`)) {
     throw new Error(
-      `Refusing to use namespace "${namespace}": this app only touches ${NAMESPACE_PREFIX}-* namespaces, so it cannot read or overwrite memory that is not its own.`,
+      `Refusing to use namespace "${namespace}": this app only touches ${NAMESPACE} and ${NAMESPACE}-*, so it cannot read or overwrite memory that is not its own.`,
     );
   }
   return namespace;
