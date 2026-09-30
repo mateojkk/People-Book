@@ -35,9 +35,103 @@ import {
 import type { WalletSigner } from "@mysten-incubation/memwal/manual";
 import { delegateKeyToPublicKey } from "@mysten-incubation/memwal";
 
-/** Public mainnet deployment IDs, from the MemWal contract docs. */
-export const MAINNET_PACKAGE_ID = "0xcee7a6fd8de52ce645c38332bde23d4a30fd9426bc4681409733dd50958a24c6";
-export const MAINNET_REGISTRY_ID = "0x0da982cefa26864ae834a8a0504b904233d49e20fcc17c373c8bed99c75a7edd";
+/**
+ * Walrus Memory deployment IDs.
+ *
+ * These are deliberately NOT hardcoded. The published docs currently list mainnet
+ * IDs that the production relayer does not serve (MystenLabs/MemWal#1032), and
+ * hardcoding any pair means the app breaks again the next time they rotate. So we
+ * read `packageId` from the relayer's own `/config` at runtime and cache it.
+ *
+ * `registryId` is not exposed by `/config`, so it must come from the environment.
+ * The value below is the mainnet registry that pairs with the production
+ * packageId; if the relayer ever reports a different package, the mismatch is
+ * surfaced rather than silently used.
+ */
+/** The package the docs still list. Retired — the relayer does not serve it. */
+export const RETIRED_PACKAGE_ID = "0xcee7a6fd8de52ce645c38332bde23d4a30fd9426bc4681409733dd50958a24c6";
+export const FALLBACK_PACKAGE_ID = "0xe7c16fbea0560e7057e2bf7422feaa4fb313749fc69c9e9092fac7a33b81d7f5";
+/** AccountRegistry for the live package. Verified against mainnet. */
+export const FALLBACK_REGISTRY_ID = "0x8bf82c9e09e36b8d1c38298f68b7cb68e7b8762887e7592add9986d5e9cf199f";
+
+let cachedConfig: { packageId: string; registryId: string } | null = null;
+let cachedRegistryCheck: { ok: boolean; detail: string } | null = null;
+
+/**
+ * Fetches the live packageId from the relayer's own /config, once per process.
+ *
+ * Hardcoding it is what broke this app the first time: the published docs list a
+ * mainnet package the production relayer does not serve, so an account created
+ * against it 401s. Reading it from the relayer means a rotation is a non-event.
+ */
+export async function deployment(): Promise<{ packageId: string; registryId: string }> {
+  if (cachedConfig) return cachedConfig;
+
+  const serverUrl = process.env.MEMWAL_SERVER_URL ?? "https://relayer.memory.walrus.xyz";
+  let packageId = process.env.MEMWAL_PACKAGE_ID || FALLBACK_PACKAGE_ID;
+
+  try {
+    const response = await fetch(`${serverUrl}/config`, { signal: AbortSignal.timeout(8000) });
+    if (response.ok) {
+      const body = (await response.json()) as { packageId?: string };
+      // An explicit env override wins, so a self-hosted or pinned deployment is
+      // never silently overwritten by whatever a relayer happens to report.
+      if (body.packageId && !process.env.MEMWAL_PACKAGE_ID) packageId = body.packageId;
+    }
+  } catch {
+    // A relayer we cannot reach is not a reason to fail here; account creation
+    // surfaces its own error if the deployment is genuinely wrong.
+  }
+
+  cachedConfig = { packageId, registryId: process.env.MEMWAL_REGISTRY_ID || FALLBACK_REGISTRY_ID };
+  return cachedConfig;
+}
+
+/**
+ * Confirms the registry actually belongs to the live package.
+ *
+ * A registry id and a package id are different values by nature, so comparing
+ * the two strings proves nothing. The real question is whether the registry
+ * OBJECT on chain is published by that package, which is a one-object lookup.
+ * This is what catches a rotation: the registry silently stops matching, and
+ * `create_account` fails with an opaque error instead of a sentence.
+ */
+export async function verifyRegistry(): Promise<{ ok: boolean; detail: string }> {
+  if (cachedRegistryCheck) return cachedRegistryCheck;
+
+  const { packageId, registryId } = await deployment();
+  try {
+    const client = suiClient();
+    const res = await client.core.getObject({ objectId: registryId });
+    const type = res.object?.type;
+
+    if (!type) {
+      cachedRegistryCheck = { ok: false, detail: `No object at registry id ${registryId} on ${process.env.SUI_RPC_URL ?? "the default mainnet fullnode"}.` };
+      return cachedRegistryCheck;
+    }
+    if (!type.startsWith(`${packageId}::`)) {
+      cachedRegistryCheck = {
+        ok: false,
+        detail: `The registry ${registryId} is published by ${type.split("::")[0]}, but the relayer serves ${packageId}. Set MEMWAL_REGISTRY_ID to the AccountRegistry for the current package, or run \`npm run check:registry <id>\` to verify a candidate.`,
+      };
+      return cachedRegistryCheck;
+    }
+
+    cachedRegistryCheck = { ok: true, detail: `${type} matches the relayer's package.` };
+    return cachedRegistryCheck;
+  } catch (error) {
+    // Sui unreachable is not a deployment mismatch, and saying it is would send
+    // someone off to change configuration that is already correct.
+    cachedRegistryCheck = { ok: true, detail: `Could not verify on chain: ${error instanceof Error ? error.message : String(error)}` };
+    return cachedRegistryCheck;
+  }
+}
+
+/** Clears the cached deployment. Used by /health so a rotation is visible. */
+export function resetDeploymentCache(): void {
+  cachedConfig = null;
+  cachedRegistryCheck = null;
+}
 
 /** Our delegate key is a 32-byte Ed25519 seed, stored as hex. */
 const DELEGATE_KEY_BYTES = 32;
@@ -53,14 +147,6 @@ export class AccountConfigError extends Error {
 export function suiClient(): SuiGrpcClient {
   const url = process.env.SUI_RPC_URL ?? "https://fullnode.mainnet.sui.io:443";
   return new SuiGrpcClient({ baseUrl: url, network: "mainnet" });
-}
-
-function packageId(): string {
-  return process.env.MEMWAL_PACKAGE_ID || MAINNET_PACKAGE_ID;
-}
-
-function registryId(): string {
-  return process.env.MEMWAL_REGISTRY_ID || MAINNET_REGISTRY_ID;
 }
 
 /**
@@ -127,9 +213,10 @@ export async function inspectOwnership(address: string): Promise<OwnershipStatus
 export async function findAccountId(address: string): Promise<string | null> {
   const client = suiClient();
 
+  const { packageId } = await deployment();
   const response = await client.core.listOwnedObjects({
     owner: normalize(address),
-    type: `${packageId()}::account::MemWalAccount`,
+    type: `${packageId}::account::MemWalAccount`,
     limit: 10,
   });
 
@@ -163,9 +250,10 @@ export async function grantDelegateKey(
     );
   }
 
+  const { packageId, registryId } = await deployment();
   const result: AddDelegateKeyResult = await addDelegateKey({
-    packageId: packageId(),
-    registryId: registryId(),
+    packageId,
+    registryId,
     accountId,
     publicKey: await ourDelegatePublicKey(),
     label,
@@ -181,9 +269,10 @@ export async function grantDelegateKey(
 
 /** Creates the user's own account, signed by their wallet. */
 export async function createUserAccount(walletSigner: WalletSigner): Promise<CreateAccountResult> {
+  const { packageId, registryId } = await deployment();
   return createAccount({
-    packageId: packageId(),
-    registryId: registryId(),
+    packageId,
+    registryId,
     walletSigner,
   });
 }

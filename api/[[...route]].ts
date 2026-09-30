@@ -18,7 +18,16 @@ import { computeNudges, elisionLine } from "./lib/ranking.ts";
 import { capture, phraseNudges } from "./lib/capture.ts";
 import { PeopleBookStore, MemoryNotFoundError } from "./lib/store.ts";
 import { isConfigError, isWriteError, NAMESPACE, RECALL_LIMIT } from "./lib/memwal.ts";
-import { findAccountId, isPlausibleAddress, looksLikeRevoked, normalize, ourDelegatePublicKey } from "./lib/account.ts";
+import {
+  deployment,
+  findAccountId,
+  isPlausibleAddress,
+  looksLikeRevoked,
+  normalize,
+  ourDelegatePublicKey,
+  resetDeploymentCache,
+  verifyRegistry,
+} from "./lib/account.ts";
 import {
   SESSION_COOKIE,
   SessionConfigError,
@@ -106,10 +115,20 @@ function toErrorResponse(c: Context, error: unknown): Response {
 
 // ── Health ───────────────────────────────────────────────────────────────────
 
-app.get("/health", async (c) => {
+app.get("/api/health", async (c) => {
   const delegateConfigured = Boolean(process.env.MEMWAL_DELEGATE_KEY);
   const groqConfigured = Boolean(process.env.GROQ_API_KEY);
   const sessionConfigured = Boolean(process.env.SESSION_SECRET);
+  // Cleared each call so a rotation is picked up without a redeploy.
+  resetDeploymentCache();
+  let pair: { packageId: string; registryId: string; registryOk: boolean; registryDetail: string } | null = null;
+  try {
+    const resolved = await deployment();
+    const check = await verifyRegistry();
+    pair = { ...resolved, registryOk: check.ok, registryDetail: check.detail };
+  } catch {
+    pair = null;
+  }
   let delegatePublic: string | null = null;
   try {
     delegatePublic = (await ourDelegatePublicKey()).reduce((hex, b) => hex + b.toString(16).padStart(2, "0"), "");
@@ -117,11 +136,14 @@ app.get("/health", async (c) => {
     delegatePublic = null;
   }
   return c.json({
-    ok: delegateConfigured && groqConfigured && sessionConfigured,
+    // The registry check is part of readiness: a package rotation with a stale
+    // registry is the failure that produces an opaque 401 on every write.
+    ok: delegateConfigured && groqConfigured && sessionConfigured && (pair?.registryOk ?? false),
     config: { delegate: delegateConfigured, groq: groqConfigured, session: sessionConfigured },
     delegatePublicKey: delegatePublic,
     namespace: NAMESPACE,
     network: "mainnet",
+    deployment: pair,
     recallLimit: RECALL_LIMIT,
   });
 });
@@ -129,7 +151,7 @@ app.get("/health", async (c) => {
 // ── Auth ─────────────────────────────────────────────────────────────────────
 
 /** Step 1: server issues a single-use challenge bound to an address. */
-app.post("/auth/challenge", async (c) => {
+app.post("/api/auth/challenge", async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { address?: unknown };
   if (!isPlausibleAddress(body.address)) {
     return c.json({ error: "bad_address", message: "That is not a Sui address." }, 400);
@@ -139,7 +161,7 @@ app.post("/auth/challenge", async (c) => {
 });
 
 /** Step 2: the wallet signs it, and we verify before minting a session. */
-app.post("/auth/session", async (c) => {
+app.post("/api/auth/session", async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { token?: unknown; signature?: unknown };
   if (typeof body.token !== "string" || typeof body.signature !== "string") {
     return c.json({ error: "bad_request", message: "token and signature are required." }, 400);
@@ -159,14 +181,14 @@ app.post("/auth/session", async (c) => {
   return c.json({ address: result.address });
 });
 
-app.get("/auth/whoami", async (c) => {
+app.get("/api/auth/whoami", async (c) => {
   const session = await readSession(parseCookies(c.req.header("cookie"))[SESSION_COOKIE]);
   if (!session) return c.json({ signedIn: false }, 200);
   const accountId = await findAccountId(session.address).catch(() => null);
   return c.json({ signedIn: true, address: session.address, accountId });
 });
 
-app.post("/auth/logout", (c) => {
+app.post("/api/auth/logout", (c) => {
   c.header("Set-Cookie", clearCookieHeader(SESSION_COOKIE));
   return c.json({ ok: true });
 });
@@ -178,7 +200,24 @@ app.post("/auth/logout", (c) => {
  * account, so they are entitled to see exactly what they are granting. Showing
  * it is also what makes the revocation demo checkable.
  */
-app.get("/account/delegate-key", async (c) => {
+/**
+ * The live Walrus Memory deployment pair.
+ *
+ * The browser needs the same package and registry ids the server uses, or
+ * create_account lands an account under a package the relayer does not serve.
+ * Serving them from one place means a rotation is fixed in exactly one file.
+ */
+app.get("/api/account/deployment", async (c) => {
+  try {
+    const pair = await deployment();
+    const registry = await verifyRegistry();
+    return c.json({ ...pair, network: "mainnet", registryOk: registry.ok, registryDetail: registry.detail });
+  } catch (error) {
+    return toErrorResponse(c, error);
+  }
+});
+
+app.get("/api/account/delegate-key", async (c) => {
   try {
     const publicKey = await ourDelegatePublicKey();
     const hex = [...publicKey].map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -191,7 +230,7 @@ app.get("/account/delegate-key", async (c) => {
 // ── The book ─────────────────────────────────────────────────────────────────
 
 /** The ledger, with an honest coverage figure. */
-app.get("/memories", async (c) => {
+app.get("/api/memories", async (c) => {
   const resolved = await resolveStore(c);
   if ("error" in resolved) return resolved.error;
   try {
@@ -217,7 +256,7 @@ app.get("/memories", async (c) => {
  * the honest baseline: every nudge is a recall, so with memory off there is
  * nothing. That contrast is the before/after the submission is judged on.
  */
-app.get("/nudges", async (c) => {
+app.get("/api/nudges", async (c) => {
   const resolved = await resolveStore(c);
   if ("error" in resolved) return resolved.error;
 
@@ -254,7 +293,7 @@ app.get("/nudges", async (c) => {
 });
 
 /** Dismiss a nudge. The memory underneath survives, deliberately. */
-app.post("/nudges/dismiss", async (c) => {
+app.post("/api/nudges/dismiss", async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { id?: unknown };
   if (typeof body.id !== "string" || !body.id) {
     return c.json({ error: "bad_request", message: "id is required." }, 400);
@@ -266,7 +305,7 @@ app.post("/nudges/dismiss", async (c) => {
 });
 
 /** Extracts candidate memories from a message. Nothing is written. */
-app.post("/capture", async (c) => {
+app.post("/api/capture", async (c) => {
   const resolved = await resolveStore(c);
   if ("error" in resolved) return resolved.error;
 
@@ -297,7 +336,7 @@ app.post("/capture", async (c) => {
  * and stores nothing — a confirmation that does not persist would leave the user
  * believing their book knows something it does not.
  */
-app.post("/memories", async (c) => {
+app.post("/api/memories", async (c) => {
   const resolved = await resolveStore(c);
   if ("error" in resolved) return resolved.error;
 
@@ -329,7 +368,7 @@ app.post("/memories", async (c) => {
 });
 
 /** Forgets a memory. Writes a tombstone; reports honestly if it did not land. */
-app.delete("/memories/:id", async (c) => {
+app.delete("/api/memories/:id", async (c) => {
   const resolved = await resolveStore(c);
   if ("error" in resolved) return resolved.error;
   try {
@@ -341,7 +380,7 @@ app.delete("/memories/:id", async (c) => {
 });
 
 /** Closes a promise the user says they kept. */
-app.post("/memories/:id/resolve", async (c) => {
+app.post("/api/memories/:id/resolve", async (c) => {
   const resolved = await resolveStore(c);
   if ("error" in resolved) return resolved.error;
   const body = (await c.req.json().catch(() => ({}))) as { status?: unknown };
@@ -357,7 +396,7 @@ app.post("/memories/:id/resolve", async (c) => {
 });
 
 /** Per-person brief. Taboos are withheld, and the withholding is announced. */
-app.get("/people/:person", async (c) => {
+app.get("/api/people/:person", async (c) => {
   const resolved = await resolveStore(c);
   if ("error" in resolved) return resolved.error;
   const person = decodeURIComponent(c.req.param("person"));
@@ -386,7 +425,7 @@ app.get("/people/:person", async (c) => {
 });
 
 /** Everyone in the book, including the user themself. */
-app.get("/people", async (c) => {
+app.get("/api/people", async (c) => {
   const resolved = await resolveStore(c);
   if ("error" in resolved) return resolved.error;
   try {
@@ -409,7 +448,7 @@ app.get("/people", async (c) => {
 });
 
 /** Everything, as JSON. Portability, and the thing a user is entitled to. */
-app.get("/export", async (c) => {
+app.get("/api/export", async (c) => {
   const resolved = await resolveStore(c);
   if ("error" in resolved) return resolved.error;
   try {
@@ -437,7 +476,7 @@ app.get("/export", async (c) => {
  * never agreed to be in a submission. The real app is used with real contacts;
  * the demo and the article are not.
  */
-app.post("/demo/seed", async (c) => {
+app.post("/api/demo/seed", async (c) => {
   const resolved = await resolveStore(c);
   if ("error" in resolved) return resolved.error;
   try {
@@ -456,6 +495,6 @@ app.post("/demo/seed", async (c) => {
   }
 });
 
-app.get("/demo/cast-size", (c) => c.json({ count: demoCast().length }));
+app.get("/api/demo/cast-size", (c) => c.json({ count: demoCast().length }));
 
 export default app;
