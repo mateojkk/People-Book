@@ -170,7 +170,7 @@ export default function App() {
               {ownership.message}
             </p>
             <p className="mt-2 text-[11px] leading-relaxed text-quiet">
-              Find it at{" "}
+              Paste the id, or a link containing it. Find it at{" "}
               <a
                 href="https://memory.walrus.xyz"
                 target="_blank"
@@ -187,7 +187,7 @@ export default function App() {
               <input
                 value={accountIdDraft}
                 onChange={(e) => setAccountIdDraft(e.target.value)}
-                placeholder="0x…"
+                placeholder="0x… or paste a link"
                 className="mono min-w-0 flex-1 rounded border border-line bg-ink/60 px-2 py-1.5 text-xs text-bright outline-none placeholder:text-quiet/60 focus:border-accent/50"
               />
               <button

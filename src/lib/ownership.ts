@@ -207,8 +207,10 @@ export function useOwnership(onDone: () => void): OwnershipState {
     async (id: string) => {
       setMessage("");
       try {
-        await api.post("/api/account/claim", { accountId: id.trim() });
-        rememberClaim(id.trim());
+        const claimed = await api.post<{ accountId: string }>("/api/account/claim", { accountId: id.trim() });
+        // The server returns the normalised id, so what we remember is exactly
+        // what it verified rather than whatever the user happened to paste.
+        rememberClaim(claimed.accountId);
         await start();
       } catch (error) {
         setStep("needs_account_id");

@@ -128,6 +128,19 @@ export async function verifyRegistry(): Promise<{ ok: boolean; detail: string }>
 }
 
 /**
+ * Pulls a 0x object id out of whatever the user pasted.
+ *
+ * People find the id on the memory.walrus.xyz dashboard or by right-clicking an
+ * object in a Sui explorer, so the paste is frequently a URL. Taking the first
+ * 0x-prefixed 64-hex run handles the bare id, `/object/<0x…>`, and a copied
+ * transaction digest alike.
+ */
+export function extractObjectId(raw: string): string {
+  const match = /0x[0-9a-fA-F]{64}/.exec(raw);
+  return match ? normalize(match[0]) : "";
+}
+
+/**
  * Checks a user-supplied account id is a real Walrus Memory account.
  *
  * Needed because a shared object cannot be enumerated: `listOwnedObjects` does
@@ -144,10 +157,14 @@ export async function verifyRegistry(): Promise<{ ok: boolean; detail: string }>
  * not asked to sign a doomed transaction.
  */
 export async function verifyAccountShape(
-  accountId: string,
-): Promise<{ ok: true } | { ok: false; reason: string }> {
+  raw: string,
+): Promise<{ ok: true; accountId: string } | { ok: false; reason: string }> {
+  // Accept a pasted link as well as a bare id. Where a user finds the id is a
+  // dashboard row or an explorer link, and asking them to reduce a URL to 0x…
+  // by hand is a pointless way to lose them.
+  const accountId = extractObjectId(raw);
   if (!isPlausibleAddress(accountId)) {
-    return { ok: false, reason: "That is not a Sui object id. It should start with 0x." };
+    return { ok: false, reason: "That is not a Sui object id. Paste the id itself or a link containing it." };
   }
   try {
     const type = (await suiClient().core.getObject({ objectId: normalize(accountId) })).object?.type ?? "";
@@ -155,7 +172,7 @@ export async function verifyAccountShape(
     if (!type.endsWith("::account::MemWalAccount")) {
       return { ok: false, reason: `That object is not a Walrus Memory account (it is a ${type.split("::").slice(-2).join("::")}).` };
     }
-    return { ok: true };
+    return { ok: true, accountId };
   } catch (error) {
     return { ok: false, reason: error instanceof Error ? error.message : String(error) };
   }
