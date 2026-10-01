@@ -161,10 +161,20 @@ code,
 }
 
 /* Custom chrome everywhere, so focus has to be drawn rather than inherited. */
-:where(button, a, textarea, summary):focus-visible {
+:where(button, a, summary):focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
   border-radius: 0.25rem;
+}
+
+/* The composer draws its own focus, on the container, via focus-within.
+
+   Outlining the textarea as well put a second border inside the first, which is
+   literally an input inside an input -- and it is what that was reported as. Two
+   focus indicators for one control is not clearer, it is noise. */
+.composer textarea:focus,
+.composer textarea:focus-visible {
+  outline: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

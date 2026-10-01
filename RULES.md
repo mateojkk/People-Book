@@ -106,15 +106,30 @@ together, and rotating it in one silently breaks the other — which lands on ru
 - A secret is per-project. Document it in `.env` when it is borrowed.
 - Never commit one. `.env` is ignored, and it stays that way.
 
-## 12. Do not describe work you cannot see
+## 12. Do not describe what you have not checked
 
-Not one visual change in this project has been looked at by the person who wrote
-it. Saying a design "looks right" is a claim about something unobserved.
+Saying a design "looks right" without rendering it is a claim about something
+unobserved, and it was made repeatedly here before it became possible to observe
+anything at all. See rule 13 for the correction.
 
-- Say what was changed and what was verified. Let the other pair of eyes judge.
+- Say what was changed and what was verified. Distinguish the two.
 - Build and typecheck before claiming, every time, including for a one-line edit.
 
-## 13. Never overlap the chrome
+## 13. Look at it
+
+I asserted for an entire session that I could not see the UI. I could: Chromium
+via Playwright installs in about a minute, and every layout bug in this project
+was then obvious in one screenshot -- an input nested inside an input, a rail
+collapsed to unreadable glyphs, an empty composer 102px tall for a one-line input.
+
+Build green, typecheck green, 300 assertions passing, and the page was still
+wrong in three visible ways. None of those could be caught by reading the code,
+because in the code they are correct.
+
+- Anything visual gets looked at before it is described as finished.
+- `npm run verify:ui` drives a real browser and asserts on what comes out.
+
+## 14. Never overlap the chrome
 
 The "Jump to latest" button was pulled up with a negative margin so it would sit
 over the composer. Two bordered boxes on top of each other, which looks exactly
@@ -125,7 +140,7 @@ the person looking at it that is what it was.
   the ambiguity.
 - If a layout can be read as broken, it is broken, whatever the CSS intends.
 
-## 14. The dependency list is a claim
+## 15. The dependency list is a claim
 
 Unused dependencies were removed once and the list still drifted. Every package
 added has to be used by something in `src/` or it comes out.

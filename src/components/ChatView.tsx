@@ -268,7 +268,11 @@ function Composer({
   const canSend = draft.trim().length > 0 && !busy;
   return (
     <div className="composer">
-      <div className="rounded-2xl border border-rule bg-panel p-2 transition-colors focus-within:border-accent/50">
+      {/* One row, not two. The send button used to sit on its own line beneath
+          the text, which made an empty composer 102px tall -- a big hollow box for
+          a one-line input. Inline, it is 52px when empty and grows with the text,
+          because the button simply moves down as the text wraps. */}
+      <div className="flex items-end gap-1 rounded-2xl border border-rule bg-panel p-2 transition-colors focus-within:border-accent/50">
         <label htmlFor="composer" className="sr-only">
           Message
         </label>
@@ -279,9 +283,9 @@ function Composer({
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKeyDown}
           rows={1}
-          className="w-full resize-none border-0 bg-transparent px-3 py-2.5 text-[15px] leading-6 text-text outline-none"
+          className="max-h-[11rem] min-h-[24px] w-full flex-1 resize-none border-0 bg-transparent px-2 py-1 text-[15px] leading-6 text-text outline-none"
         />
-        <div className="flex items-center justify-end gap-2 px-1 pb-0.5">
+        <div className="flex shrink-0 items-center gap-2 pb-0.5 pr-0.5">
           {/* Stop replaces Send while a reply is streaming, rather than sitting
               beside it greyed out. A control you cannot use is worse than one that
               changes. */}
@@ -387,10 +391,10 @@ function TurnBlock({
           column, so you learn whose entry you are in rather than reading a label
           on a chip. */}
       {!!turn.saved?.length && (
-        <div className="mt-3 space-y-2 border-l border-rule-soft pl-3">
+        <div className="mt-3 space-y-2">
           {turn.saved.map((memory) => (
             <div key={memory.id} className="marginalia">
-              <span className="margin-name truncate pt-0.5 text-[12px] font-medium text-accent">
+              <span className="margin-name truncate border-l border-rule-soft py-0.5 pl-3 text-[12px] font-medium text-accent">
                 {memory.person}
               </span>
               <span className="flex items-start gap-3">

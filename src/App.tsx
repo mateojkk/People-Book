@@ -36,7 +36,7 @@ export default function App() {
   const ownership = useOwnership(() => void refreshWho());
   const [accountIdDraft, setAccountIdDraft] = useState("");
   const [modelReady, setModelReady] = useState<boolean | null>(null);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // Is there actually a model behind this?
   //
