@@ -47,9 +47,25 @@ import { CONFIRM_THRESHOLD } from "../../shared/types.ts";
 
 const MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
 
+/** One prior turn, in the order it happened. */
+export interface PriorTurn {
+  role: "you" | "assistant";
+  text: string;
+}
+
 export interface ChatTurnInput {
   store: PeopleBookStore;
   message: string;
+  /**
+   * The thread so far.
+   *
+   * Without this the endpoint is not a chatbot, it is a per-message classifier
+   * with a reply generator bolted on: it cannot resolve "her", "what about Dev?",
+   * or "when is it?" because it has never been told what those refer to. A
+   * conversation needs its earlier turns, so they come in here and go to both the
+   * extractor and the reply.
+   */
+  history?: PriorTurn[];
   /** Ids the user already undid, so a retried turn does not resurrect them. */
   undoOf?: string[];
 }
@@ -83,22 +99,37 @@ export interface ChatTurn {
  * Saving happens before the reply is written so the reply can speak to what was
  * just stored — telling someone "noted" is only honest if it is already durable.
  */
-export async function takeTurn({ store, message, undoOf = [] }: ChatTurnInput): Promise<ChatTurn> {
+export async function takeTurn({ store, message, undoOf = [], history = [] }: ChatTurnInput): Promise<ChatTurn> {
   const { memories, coverage } = await store.listLive();
   const known = [...new Set(memories.map((m) => m.person))];
 
   // ── 1. Notice and write ─────────────────────────────────────────────────────
-  const extraction = await capture(message, known);
+  const extraction = await capture(message, known, history);
 
   const saved: SavedMemory[] = [];
+
+  // Said already, in this book or earlier in this same conversation. Saying the
+  // same thing twice should not file it twice: the ledger is a record, and a
+  // duplicate reads as a fact the user stated two separate times.
+  const saidAlready = new Set<string>();
+  const key = duplicateKey;
+  for (const memory of memories) saidAlready.add(key(memory.person, memory.text));
+  for (const undoneId of undoOf) {
+    // Remember what an undone memory looked like, so saying it again is allowed
+    // (the user changed their mind and then reversed it) but saying the same
+    // thing twice in a row is not.
+    const previous = memories.find((m) => m.id === undoneId);
+    if (previous) saidAlready.delete(key(previous.person, previous.text));
+  }
+
   for (const candidate of extraction.candidates) {
     // Below the threshold a guess is worse than nothing, so it is not written and
     // not mentioned. This is the same bar the confirm path used.
     if (candidate.confidence < CONFIRM_THRESHOLD) continue;
-    // An undo from earlier in this conversation wins over a re-extraction of the
-    // same words, otherwise undoing and then repeating yourself silently undoes
-    // your own undo.
-    if (undoOf.length && undoOf.some((id) => candidate.text.includes(id))) continue;
+
+    const candidateKey = key(candidate.person, candidate.text);
+    if (saidAlready.has(candidateKey)) continue;
+    saidAlready.add(candidateKey);
 
     try {
       const written = await store.remember({
@@ -107,6 +138,9 @@ export async function takeTurn({ store, message, undoOf = [] }: ChatTurnInput): 
         text: candidate.text,
         occurredAt: candidate.occurredAt,
         dueAt: candidate.dueAt,
+        // Kept as "MM-DD" rather than resolved to a date, so it keeps coming round
+        // next year instead of quietly expiring.
+        anniversary: candidate.anniversary,
         // Told to us is confirmed. See the note at the top of this file.
         //
         // This field is load-bearing and easy to miss: makeMemory defaults it to
@@ -138,13 +172,16 @@ export async function takeTurn({ store, message, undoOf = [] }: ChatTurnInput): 
   // forgotten is just a database, so anything the ranker says is due is offered
   // whether or not the user asked. Deterministic ranking decides *what*; the model
   // only decides how to word it.
-  const due = computeNudges({ memories: after }).nudges.filter((n) => !dismissed(n, message));
+  // "On its own" means on its own, not "even while we are mid-conversation about
+  // this person". If the thread is already about Mara, bringing up Mara is noise.
+  const threadSubjects = [message, ...history.map((h) => h.text)].join("\n").toLowerCase();
+  const due = computeNudges({ memories: after }).nudges.filter((n) => !dismissed(n, threadSubjects));
   const volunteered = due.slice(0, 2);
   const phrased = await phraseNudges(volunteered);
 
   // ── 3. Answer ───────────────────────────────────────────────────────────────
-  const cited = pickCitations(after, message, volunteered);
-  const reply = await composeReply({ message, memories: after, phrased, cited, saved });
+  const cited = pickCitations(after, threadSubjects, volunteered);
+  const reply = await composeReply({ message, history, memories: after, phrased, cited, saved });
 
   return {
     reply,
@@ -161,16 +198,16 @@ export async function takeTurn({ store, message, undoOf = [] }: ChatTurnInput): 
  * Crude on purpose: if the message is about that person, the user is already on
  * it and repeating it is noise. Deterministic, so it never surprises anyone.
  */
-function dismissed(nudge: Nudge, message: string): boolean {
+function dismissed(nudge: Nudge, thread: string): boolean {
   const about = nudge.person.toLowerCase();
   if (!about || about === "you") return false;
-  return message.toLowerCase().includes(about);
+  return thread.includes(about);
 }
 
 /** The memories the reply is standing on, so every claim can be checked. */
 function pickCitations(
   memories: readonly PersonMemory[],
-  message: string,
+  thread: string,
   volunteered: readonly Nudge[],
 ): { id: string; person: string; text: string }[] {
   const cited = new Map<string, { id: string; person: string; text: string }>();
@@ -183,11 +220,10 @@ function pickCitations(
 
   // Plus anything about a person the user just mentioned, so a reply that says
   // "you already know her birthday is the 12th" can be checked.
-  const lower = message.toLowerCase();
   for (const memory of memories) {
     if (cited.has(memory.id)) continue;
     if (memory.person.toLowerCase().includes("you")) continue;
-    if (lower.includes(memory.person.toLowerCase())) {
+    if (thread.includes(memory.person.toLowerCase())) {
       cited.set(memory.id, { id: memory.id, person: memory.person, text: memory.text });
     }
     if (cited.size >= 6) break;
@@ -206,6 +242,7 @@ function pickCitations(
  */
 async function composeReply(args: {
   message: string;
+  history: readonly PriorTurn[];
   memories: readonly PersonMemory[];
   phrased: readonly string[];
   cited: readonly { id: string; person: string; text: string }[];
@@ -232,7 +269,13 @@ async function composeReply(args: {
           {
             role: "user",
             content: [
-              `What they just said:\n${args.message}`,
+              args.history.length
+                ? `Conversation so far:\n${args.history
+                    .slice(-8)
+                    .map((h) => `${h.role === "you" ? "Them" : "Assistant"}: ${h.text}`)
+                    .join("\n")}`
+                : "",
+              `\nTheir latest message:\n${args.message}`,
               `\nMemories now on file:\n${ledger || "(none yet)"}`,
               args.saved.length
                 ? `\nJust remembered from that message: ${args.saved.map((s) => `"${s.text}" (about ${s.person})`).join("; ")}`
@@ -262,7 +305,8 @@ Rules:
 - Never say you have "saved", "noted", or "remembered" something unless it appears under "Just remembered from that message".
 - If something is worth bringing up unprompted, work it in naturally as conversation, not as an announcement.
 - If the message is just chat, reply like a person who is paying attention. Do not force a memory out of it.
-- Do not invent facts. Everything you assert must come from the memories given to you.`;
+- Do not invent facts. Everything you assert must come from the memories given to you.
+- You are continuing a conversation, not starting one. Resolve "her", "him", "it", "what about Dev?" against the turns above. If it is genuinely ambiguous, ask one short question rather than guessing.`;
 
 /**
  * What to say when the model is unavailable.
@@ -286,6 +330,36 @@ function fallbackReply(args: {
   for (const line of args.phrased) parts.push(line);
   if (!parts.length) return "I'm listening.";
   return parts.join(" ");
+}
+
+/**
+ * A comparable form of a claim, for spotting a repeat.
+ *
+ * Loose on purpose. Models phrase the same fact differently across turns — "her
+ * birthday is the 14th" and "Mara's birthday is on the 14th" are one memory — so
+ * punctuation and filler are dropped rather than compared literally. It is a
+ * duplicate guard, not a semantic search; near misses are caught by the ledger
+ * showing both, which is honest.
+ */
+export function normaliseForCompare(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[.!?,;:'"\u2019]/g, "")
+    .replace(/\b(is|are|was|were|the|a|an|on|in|at)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * The identity of a claim for duplicate detection.
+ *
+ * Exported because "does this count as the same thing" is a judgement worth
+ * testing directly. Testing it through the model instead means the assertion
+ * depends on whether Groq happened to extract anything this time, which makes the
+ * test flaky for a reason unrelated to what it is checking.
+ */
+export function duplicateKey(person: string, text: string): string {
+  return `${person.toLowerCase()}::${normaliseForCompare(text)}`;
 }
 
 /** Narrows an extraction to the candidates worth writing. Exported for tests. */

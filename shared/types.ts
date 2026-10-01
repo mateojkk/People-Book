@@ -85,6 +85,15 @@ export interface PersonMemory {
   occurredAt?: string;
   /** ISO date (YYYY-MM-DD). When it becomes due. Drives date and promise nudges. */
   dueAt?: string;
+  /**
+   * "MM-DD" for a date that comes round every year, such as a birthday.
+   *
+   * Separate from dueAt because a birthday has no year: there is nowhere to put
+   * one. Without this, "her birthday is the 14th" was stored as a bare trait with
+   * no date and could therefore never produce a reminder. The ranker computes the
+   * next occurrence from this, so it keeps working in every year.
+   */
+  anniversary?: string;
   /** Id of a memory this one replaces. Keeps history instead of overwriting. */
   supersedes?: string;
   /**
@@ -185,6 +194,15 @@ export interface LedgerEntry {
 // ─── Capture ─────────────────────────────────────────────────────────────────
 
 /** A memory the model proposes, before the user has confirmed it. */
+/**
+ * A recurring date, as "MM-DD".
+ *
+ * Birthdays and anniversaries have no year, which is exactly why they could not be
+ * reminded about: there was nowhere to put one. `dueAt` is a full ISO date, so it
+ * cannot hold "the 14th" -- and a birthday stored without a date is just a trait,
+ * which never produces a nudge. The ranker computes the next occurrence from this
+ * instead, so it keeps working in every year rather than expiring on New Year's.
+ */
 export interface MemoryCandidate {
   person: string;
   type: MemoryType;
@@ -192,6 +210,8 @@ export interface MemoryCandidate {
   text: string;
   occurredAt?: string;
   dueAt?: string;
+  /** "MM-DD" for a date that recurs every year, such as a birthday. */
+  anniversary?: string;
   /** Why the model thinks this is worth keeping. Shown so the user can judge. */
   reasoning: string;
   /**

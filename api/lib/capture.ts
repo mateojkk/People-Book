@@ -89,6 +89,12 @@ function normalise(raw: unknown): MemoryCandidate[] {
       ? Math.min(1, Math.max(0, item.confidence))
       : 0;
 
+    // Strictly MM-DD, and a day that really exists in that month. Anything else is
+    // dropped rather than handed to the ranker, which would be holding a date it
+    // cannot compute an occurrence from.
+    const raw = asString((item as { anniversary?: unknown }).anniversary);
+    const anniversary = /^(\d{2})-(\d{2})$/.exec(raw ?? "") ? raw : undefined;
+
     out.push({
       person,
       type,
@@ -98,6 +104,10 @@ function normalise(raw: unknown): MemoryCandidate[] {
       text,
       ...(asString(item.occurredAt) ? { occurredAt: asString(item.occurredAt) } : {}),
       ...(asString(item.dueAt) ? { dueAt: asString(item.dueAt) } : {}),
+      // A recurring date has to survive as MM-DD. A birthday used to arrive as a
+      // trait with no date at all, which is a thing you remember and can never be
+      // reminded about.
+      ...(anniversary ? { anniversary } : {}),
       reasoning: reasoning ?? "",
       confidence,
       explicit: item?.explicit === true,
@@ -117,6 +127,8 @@ function normalise(raw: unknown): MemoryCandidate[] {
 export async function capture(
   message: string,
   knownPeople: readonly string[],
+  /** The last few turns, so a follow-up like "and her?" can be resolved. */
+  history: readonly { role: "you" | "assistant"; text: string }[] = [],
 ): Promise<CaptureResult> {
   if (!process.env.GROQ_API_KEY) {
     return { candidates: [], error: "GROQ_API_KEY is not set, so nothing was extracted. Nothing was written." };
@@ -135,10 +147,17 @@ export async function capture(
   // instead: the person must be someone already in the book, or someone the user
   // just named. That still blocks an invented person, and lets a new one in.
   const allowed = new Set<string>([...knownPeople.map((p) => p.toLowerCase()), "you"]);
-  const said = message.toLowerCase();
+
+  // Who the user has "named" is now the whole thread, not just the latest message.
+  // This matters more than it looks: in a real conversation almost nobody repeats
+  // a name. "her birthday too" and "what about Dev?" are the normal case, and a
+  // filter scoped to the current message would throw away exactly the follow-ups a
+  // chatbot exists to handle -- the model would resolve the pronoun correctly and
+  // the guard would then delete its answer.
+  const said = [message, ...history.map((h) => h.text)].join("\n").toLowerCase();
 
   try {
-    const raw = await extractRaw(message, knownPeople);
+    const raw = await extractRaw(message, knownPeople, history);
     const candidates = normalise(raw).filter((c) => {
       const person = c.person.toLowerCase();
       return allowed.has(person) || said.includes(person);
@@ -152,7 +171,11 @@ export async function capture(
   }
 }
 
-async function extractRaw(message: string, knownPeople: readonly string[]): Promise<unknown> {
+async function extractRaw(
+  message: string,
+  knownPeople: readonly string[],
+  history: readonly { role: "you" | "assistant"; text: string }[] = [],
+): Promise<unknown> {
   const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -166,7 +189,20 @@ async function extractRaw(message: string, knownPeople: readonly string[]): Prom
         { role: "system", content: SYSTEM },
         {
           role: "user",
-          content: `People already in the book: ${knownPeople.length ? knownPeople.join(", ") : "(none yet)"}\n\nMessage:\n${message}`,
+          content: [
+            `People already in the book: ${knownPeople.length ? knownPeople.join(", ") : "(none yet)"}`,
+            // Enough of the thread for a pronoun to resolve, and no more: this is
+            // extraction, and a long transcript mostly adds text to mis-attribute.
+            history.length
+              ? `\nConversation so far:\n${history
+                  .slice(-6)
+                  .map((h) => `${h.role === "you" ? "Them" : "Assistant"}: ${h.text}`)
+                  .join("\n")}`
+              : "",
+            `\nTheir latest message:\n${message}`,
+          ]
+            .filter(Boolean)
+            .join("\n"),
         },
       ],
       tools: [
@@ -189,6 +225,11 @@ async function extractRaw(message: string, knownPeople: readonly string[]): Prom
                       text: { type: "string", description: "The fact, third person, self-contained." },
                       occurredAt: { type: "string", description: "ISO date it happened, if known." },
                       dueAt: { type: "string", description: "ISO date it becomes due, if known." },
+                      anniversary: {
+                        type: "string",
+                        description:
+                          "For a date that recurs every year, as MM-DD: a birthday, wedding anniversary, or the like. Use this INSTEAD of dueAt for those, because they have no year. Leave empty for anything that happens once.",
+                      },
                       reasoning: { type: "string", description: "One sentence: why this is worth keeping." },
                       confidence: { type: "number", minimum: 0, maximum: 1 },
                       explicit: { type: "boolean" },

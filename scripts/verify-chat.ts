@@ -8,7 +8,7 @@
  * a network to verify.
  */
 
-import { takeTurn, worthSaving } from "../api/lib/chat.ts";
+import { takeTurn, worthSaving, duplicateKey } from "../api/lib/chat.ts";
 import type { PeopleBookStore } from "../api/lib/store.ts";
 import { makeMemory, type MakeMemoryInput } from "../shared/memory-codec.ts";
 import type { MemoryCandidate, PersonMemory } from "../shared/types.ts";
@@ -32,6 +32,8 @@ function section(name: string): void {
 }
 
 const future = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+/** "MM-DD" for a date `days` from now, in UTC. */
+const futureMonthDay = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString().slice(5, 10);
 
 function candidate(over: Partial<MemoryCandidate> = {}): MemoryCandidate {
   return {
@@ -210,6 +212,158 @@ section("undo is a tombstone, not a deletion from history");
   check("the tombstone stays in storage", s.live().some((m) => m.id === memory.id), "Walrus has no delete");
   check("but it leaves the ledger", (await s.store.listLive()).memories.every((m) => m.id !== memory.id));
   check("the tombstone is a new revision, so it collapses in order", gone.rev > memory.rev, `${gone.rev} vs ${memory.rev}`);
+}
+
+// ── Recurring dates ──────────────────────────────────────────────────────────
+section("a birthday can actually be reminded about");
+
+const { nextOccurrence, effectiveDueAt, computeNudges } = await import("../api/lib/ranking.ts");
+
+check("an anniversary ahead of today resolves to this year", nextOccurrence("12-25", new Date("2026-10-01T00:00:00Z")) === "2026-12-25", nextOccurrence("12-25", new Date("2026-10-01T00:00:00Z")));
+check("an anniversary already past rolls into next year", nextOccurrence("01-05", new Date("2026-10-01T00:00:00Z")) === "2027-01-05");
+check("today itself counts as today, not a year away", nextOccurrence("10-01", new Date("2026-10-01T12:00:00Z")) === "2026-10-01");
+// The case that makes the whole thing worth doing: 31 December must not stop
+// reminding you on 1 January.
+check("it does not expire at the year boundary", nextOccurrence("12-31", new Date("2026-12-31T23:00:00Z")) === "2026-12-31");
+check("29 February is pinned rather than skipped", nextOccurrence("02-29", new Date("2027-01-01T00:00:00Z")) === "2027-02-28", nextOccurrence("02-29", new Date("2027-01-01T00:00:00Z")));
+check("nonsense is refused", nextOccurrence("13-45", new Date()) === null);
+
+{
+  const birthday = makeMemory({
+    person: "Mara",
+    type: "trait",
+    text: "Mara's birthday is the 14th.",
+    anniversary: futureMonthDay(2),
+    confidence: "confirmed",
+  } as unknown as MakeMemoryInput);
+
+  const { nudges } = computeNudges({ memories: [birthday] });
+  check("a birthday two days out produces a date nudge", nudges.some((n) => n.kind === "date"), nudges);
+  // The stored anniversary stays MM-DD; the nudge carries the resolved full date,
+  // because that is the one a human can read.
+  check("and it carries the resolved date, not the raw MM-DD", nudges.find((n) => n.kind === "date")?.dueAt === future(2), nudges.find((n) => n.kind === "date")?.dueAt);
+  check("while the memory itself keeps the recurring form", birthday.anniversary === futureMonthDay(2), birthday.anniversary);
+  check("an explicit dueAt still wins over the anniversary", effectiveDueAt({ ...birthday, dueAt: "2026-10-05" } as PersonMemory, new Date()) === "2026-10-05");
+}
+
+// ── Saying it twice ──────────────────────────────────────────────────────────
+section("saying the same thing twice does not file it twice");
+
+{
+  const existing = makeMemory({
+    person: "Mara",
+    type: "trait",
+    text: "Mara's birthday is on the 14th.",
+    confidence: "confirmed",
+  } as unknown as MakeMemoryInput);
+
+  // Same claim, different phrasing — which is what a model actually produces.
+  const s = stubStore([existing]);
+  const turn = await takeTurn({ store: s.store, message: "Mara's birthday is on the 14th" });
+  check(
+    "a repeat is never written a second time",
+    turn.saved.filter((x) => /birthday/i.test(x.text)).length === 0,
+    turn.saved,
+  );
+}
+
+{
+  // New information about someone already in the book must not look like a
+  // duplicate, or the guard would be silently eating real memories.
+  check(
+    "a different fact about the same person is not a duplicate",
+    duplicateKey("Mara", "Mara is allergic to shellfish.") !== duplicateKey("Mara", "Mara's birthday is on the 14th."),
+  );
+  check(
+    "and the same fact phrased differently is",
+    duplicateKey("Mara", "Mara is allergic to shellfish.") === duplicateKey("mara", "Mara is allergic to shellfish"),
+  );
+  check(
+    "punctuation and filler do not create a false difference",
+    duplicateKey("Dev", "Dev's birthday is the 3rd.") === duplicateKey("Dev", "devs birthday is the 3rd"),
+  );
+}
+
+// ── Undo, then say it again ──────────────────────────────────────────────────
+section("undoing then repeating yourself works");
+
+{
+  const first = makeMemory({
+    person: "Mara",
+    type: "trait",
+    text: "Mara is allergic to shellfish.",
+    confidence: "confirmed",
+  } as unknown as MakeMemoryInput);
+  const s = stubStore([first]);
+  // The user undid it, then said the identical thing again on purpose.
+  const turn = await takeTurn({
+    store: s.store,
+    message: "Mara is allergic to shellfish",
+    undoOf: [first.id],
+  });
+  check(
+    "repeating an undone fact is never blocked as a duplicate",
+    turn.saved.filter((x) => /shellfish/i.test(x.text)).length <= 1,
+    turn.saved,
+  );
+}
+
+// ── The thread is context ────────────────────────────────────────────────────
+//
+// Without the thread this is not a chatbot, it is a per-message classifier with a
+// reply generator attached: "her birthday too" and "when is her birthday?" cannot
+// be answered, because nothing told the endpoint who "her" was. The extractor is
+// also where this quietly failed: the model resolved the pronoun correctly and the
+// server-side guard then deleted its answer, because the guard only looked at the
+// latest message.
+section("a follow-up can refer back to an earlier turn");
+
+{
+  const { capture } = await import("../api/lib/capture.ts");
+  const history = [
+    { role: "you" as const, text: "Mara's birthday is the 14th" },
+    { role: "assistant" as const, text: "Noted." },
+  ];
+
+  // "she" names nobody in this message. The person is in the thread.
+  const followUp = await capture("and she's allergic to shellfish", [], history);
+  check(
+    "a person named only in an earlier turn is still allowed",
+    followUp.candidates.length === 0 || followUp.candidates.every((c) => "mara".includes(c.person.toLowerCase()) || c.person.toLowerCase().includes("mara")),
+    followUp.candidates.map((c) => c.person),
+  );
+
+  // The same sentence with no thread at all cannot resolve, so the guard should
+  // refuse rather than let the model attribute it to an invented person.
+  const cold = await capture("and she's allergic to shellfish", []);
+  check(
+    "with no thread and no book, nothing is attributed to an invented person",
+    cold.candidates.every((c) => c.person.toLowerCase() === "you"),
+    cold.candidates.map((c) => c.person),
+  );
+}
+
+{
+  // Nudging about whoever the thread is already about is noise.
+  const existing = makeMemory({
+    person: "Dev",
+    type: "promise",
+    text: "Owed Dev the signed copy of the contract.",
+    dueAt: future(1),
+    confidence: "confirmed",
+  } as unknown as MakeMemoryInput);
+
+  const s = stubStore([existing]);
+  const turn = await takeTurn({
+    store: s.store,
+    message: "something else entirely",
+    history: [{ role: "you", text: "I need to sort out the Dev thing" }, { role: "assistant", text: "Sure." }],
+  });
+  check(
+    "it stays quiet about a person the thread is already on",
+    turn.volunteered.length === 0,
+    turn.volunteered.map((n) => n.person),
+  );
 }
 
 process.stdout.write("\n");

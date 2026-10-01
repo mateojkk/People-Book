@@ -48,6 +48,7 @@ interface MemoryMeta {
   confidence: MemoryConfidence;
   occurredAt?: string;
   dueAt?: string;
+  anniversary?: string;
   supersedes?: string;
   deleted?: boolean;
   verbatim?: string;
@@ -56,6 +57,26 @@ interface MemoryMeta {
 }
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * A recurring date: "MM-DD".
+ *
+ * Validated for real ranges, not just shape. "13-45" is not a birthday, and letting
+ * it through would put a date the ranker cannot compute into the ledger, where it
+ * would sit looking like data forever.
+ */
+function isAnniversaryOrUndefined(value: unknown): boolean {
+  if (value === undefined || value === null) return true;
+  if (typeof value !== "string") return false;
+  const match = /^(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const month = Number(match[1]);
+  const day = Number(match[2]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return false;
+  // Reject a day that does not exist in that month, allowing for 29 Feb.
+  const probe = new Date(Date.UTC(2024, month - 1, day));
+  return probe.getUTCMonth() === month - 1 && probe.getUTCDate() === day;
+}
 
 /**
  * Ids are short, sortable by creation, and derived from a counter plus a random
@@ -80,6 +101,7 @@ export interface MakeMemoryInput {
   confidence?: MemoryConfidence;
   occurredAt?: string;
   dueAt?: string;
+  anniversary?: string;
   supersedes?: string;
   verbatim?: string;
   id?: string;
@@ -125,6 +147,7 @@ export function makeMemory(input: MakeMemoryInput): PersonMemory {
     text: input.text.trim(),
     ...(input.occurredAt ? { occurredAt: input.occurredAt } : {}),
     ...(input.dueAt ? { dueAt: input.dueAt } : {}),
+    ...(input.anniversary ? { anniversary: input.anniversary } : {}),
     ...(input.supersedes ? { supersedes: input.supersedes } : {}),
     ...(input.verbatim ? { verbatim: input.verbatim } : {}),
     createdAt: stamp,
@@ -154,6 +177,7 @@ export function serializeMemory(memory: PersonMemory): string {
   // small and the optional fields cluster at the end.
   if (memory.occurredAt) meta.occurredAt = memory.occurredAt;
   if (memory.dueAt) meta.dueAt = memory.dueAt;
+  if (memory.anniversary) meta.anniversary = memory.anniversary;
   if (memory.supersedes) meta.supersedes = memory.supersedes;
   if (memory.verbatim) meta.verbatim = memory.verbatim;
   if (memory.deleted) meta.deleted = true;
@@ -213,6 +237,7 @@ function isMeta(value: unknown): value is MemoryMeta {
   if (m.confidence !== "confirmed" && m.confidence !== "inferred") return false;
   if (!isISOOrUndefined(m.occurredAt)) return false;
   if (!isISOOrUndefined(m.dueAt)) return false;
+  if (!isAnniversaryOrUndefined(m.anniversary)) return false;
   if (typeof m.supersedes !== "undefined" && typeof m.supersedes !== "string") return false;
   if (typeof m.verbatim !== "undefined" && typeof m.verbatim !== "string") return false;
   if (typeof m.deleted !== "undefined" && typeof m.deleted !== "boolean") return false;

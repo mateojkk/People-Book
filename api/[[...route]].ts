@@ -480,14 +480,41 @@ app.post("/api/chat", async (c) => {
   const resolved = await resolveStore(c);
   if ("error" in resolved) return resolved.error;
 
-  const body = (await c.req.json().catch(() => ({}))) as { message?: unknown; undoOf?: unknown };
+  const body = (await c.req.json().catch(() => ({}))) as {
+    message?: unknown;
+    undoOf?: unknown;
+    history?: unknown;
+  };
   if (typeof body.message !== "string" || !body.message.trim()) {
     return c.json({ error: "bad_request", message: "message is required." }, 400);
   }
   const undoOf = Array.isArray(body.undoOf) ? body.undoOf.filter((v): v is string => typeof v === "string") : [];
 
+  // The thread, so pronouns and follow-ups resolve. Bounded and shape-checked
+  // because this is client input: capped to the last 20 turns, and anything that
+  // is not a {role, text} pair is dropped rather than trusted.
+  const history = Array.isArray(body.history)
+    ? (body.history as unknown[])
+        .filter(
+          (t): t is { role: "you" | "assistant"; text: string } =>
+            typeof t === "object" &&
+            t !== null &&
+            (t as { role?: unknown }).role !== undefined &&
+            ["you", "assistant"].includes(String((t as { role?: unknown }).role)) &&
+            typeof (t as { text?: unknown }).text === "string" &&
+            String((t as { text?: unknown }).text).trim().length > 0,
+        )
+        .slice(-20)
+        .map((t) => ({
+          role: String(t.role) as "you" | "assistant",
+          // Bounded per turn so a long transcript cannot be used to push the
+          // extraction prompt past the model's context.
+          text: String(t.text).slice(0, 2_000),
+        }))
+    : [];
+
   try {
-    return c.json(await takeTurn({ store: resolved.store, message: body.message.trim(), undoOf }));
+    return c.json(await takeTurn({ store: resolved.store, message: body.message.trim(), undoOf, history }));
   } catch (error) {
     return toErrorResponse(c, error);
   }

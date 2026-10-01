@@ -82,6 +82,52 @@ function isoOf(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
+/**
+ * The next time a recurring date comes round, as an ISO date.
+ *
+ * A birthday has no year, so it cannot live in `dueAt`. Given "the 14th" and
+ * today, this returns the next 14th — this year if it is still ahead, otherwise
+ * the same date next year. That is what makes an anniversary keep reminding you
+ * instead of expiring on 1 January.
+ *
+ * 29 February is the awkward one: it does not exist in a common year, so it is
+ * pinned to 1 March rather than skipped. A birthday on the 28th or 29th is still
+ * remembered, which is the point; an exact date is not worth losing the reminder
+ * over.
+ */
+export function nextOccurrence(anniversary: string, now: Date): string | null {
+  const match = /^(\d{2})-(\d{2})$/.exec(anniversary);
+  if (!match) return null;
+  const month = Number(match[1]);
+  const day = Number(match[2]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+
+  const year = now.getUTCFullYear();
+  for (const candidateYear of [year, year + 1]) {
+    const lastDay = new Date(Date.UTC(candidateYear, month, 0)).getUTCDate();
+    const resolvedDay = day > lastDay ? lastDay : day;
+    const asDate = new Date(Date.UTC(candidateYear, month - 1, resolvedDay));
+    if (asDate.getTime() >= Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())) {
+      return asDate.toISOString().slice(0, 10);
+    }
+  }
+  return null;
+}
+
+/**
+ * The date a memory should be treated as falling due, if any.
+ *
+ * An explicit `dueAt` always wins. Otherwise a recurring date is resolved against
+ * today. Kept separate from the memory itself on purpose: the stored anniversary
+ * stays "09-14" forever, while the due date it implies moves, so nothing has to be
+ * rewritten each January.
+ */
+export function effectiveDueAt(memory: PersonMemory, now: Date): string | undefined {
+  if (memory.dueAt) return memory.dueAt;
+  if (memory.anniversary) return nextOccurrence(memory.anniversary, now) ?? undefined;
+  return undefined;
+}
+
 /** The date a person was last "in touch" by our own reckoning: the most recent confirmed event mentioning them. */
 function lastContact(person: string, memories: PersonMemory[]): string | undefined {
   return memories
@@ -234,16 +280,21 @@ export function computeNudges(input: RankingInput): RankingResult {
   //    handled below, and a taboo's date is not something to announce.
   for (const m of eligible) {
     if (m.type !== "event" && m.type !== "trait") continue;
-    if (!m.dueAt) continue;
 
-    const days = dayDelta(isoOf(now), m.dueAt);
+    // Either an explicit date, or the next occurrence of a recurring one. A
+    // birthday used to reach neither branch, which is why it could be remembered
+    // but never mentioned.
+    const due = effectiveDueAt(m, now);
+    if (!due) continue;
+
+    const days = dayDelta(isoOf(now), due);
     if (!Number.isFinite(days) || days < 0 || days > horizon) continue;
 
     // Closer dates rank higher, but never perfectly: a date in 14 days should
     // not outrank an overdue promise purely on distance.
     pushNudge(
       candidates,
-      build("date", m, days, undefined, taboos, withheld),
+      build("date", m, days, undefined, taboos, withheld, now),
       0.55 + 0.25 * (1 - days / horizon),
     );
   }
@@ -256,7 +307,7 @@ export function computeNudges(input: RankingInput): RankingResult {
     const days = m.dueAt ? dayDelta(isoOf(now), m.dueAt) : null;
     // Undated open promises still surface, but weakly: you did say you'd do it.
     const score = days === null ? 0.5 : days < 0 ? 1 : 0.6 + 0.2 * (1 - Math.min(days, horizon) / horizon);
-    pushNudge(candidates, build("promise", m, days, undefined, taboos, withheld), score);
+    pushNudge(candidates, build("promise", m, days, undefined, taboos, withheld, now), score);
   }
 
   // 3. Absence. Only for people we actually have confirmed memories about, and
@@ -305,7 +356,7 @@ export function computeNudges(input: RankingInput): RankingResult {
   // 4. Unresolved situations.
   for (const m of eligible) {
     if (m.type !== "event" || m.status !== "open") continue;
-    pushNudge(candidates, build("loop", m, null, undefined, taboos, withheld), 0.45);
+    pushNudge(candidates, build("loop", m, null, undefined, taboos, withheld, now), 0.45);
   }
 
   // 5. Your own follow-through. Only reachable because the user is in the book
@@ -449,6 +500,7 @@ function build(
   since: string | undefined,
   taboos: Map<string, Taboo>,
   withheld: Set<string>,
+  now: Date,
 ): Nudge | null {
   const { text, elided } = redact(phrase(kind, m, days, since), taboos.get(m.person));
   if (elided) withheld.add(m.person);
@@ -461,7 +513,7 @@ function build(
     sourceMemoryId: m.id,
     sourceText: m.text,
     urgency: 0,
-    dueAt: m.dueAt,
+    dueAt: effectiveDueAt(m, now),
     elided: false,
   };
 }
