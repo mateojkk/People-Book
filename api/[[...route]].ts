@@ -17,7 +17,7 @@ import type { Context } from "hono";
 import { computeNudges, elisionLine } from "./lib/ranking.ts";
 import { capture, phraseNudges } from "./lib/capture.ts";
 import { takeTurn } from "./lib/chat.ts";
-import { tasksFor, composeNotice } from "./lib/tasks.ts";
+import { tasksFor, composeNotice, noticeHistory } from "./lib/tasks.ts";
 import { PeopleBookStore, MemoryNotFoundError } from "./lib/store.ts";
 import { isConfigError, isWriteError, NAMESPACE, RECALL_LIMIT } from "./lib/memwal.ts";
 import {
@@ -435,13 +435,17 @@ app.get("/api/today", async (c) => {
   if ("error" in resolved) return resolved.error;
   try {
     const { memories, coverage } = await resolved.store.listLive();
-    const tasks = tasksFor(memories, new Date());
+    const now = new Date();
+    const tasks = tasksFor(memories, now);
     const dueToday = tasks.filter((t) => t.active && (t.urgency === "overdue" || t.urgency === "today"));
     return c.json({
       tasks,
       // A sentence, not a count. "2 things need you today" is a task list with a
       // bell on it; the sentence is this app being useful in its own voice.
-      notice: composeNotice(memories, tasks, new Date()),
+      notice: composeNotice(memories, tasks, now),
+      // What it could have said for the last week. Recomputed, not recorded --
+      // see noticeHistory for why, and for what that costs in honesty.
+      history: noticeHistory(memories, tasks, now),
       dueCount: dueToday.length,
       staleCount: tasks.filter((t) => !t.active).length,
       coverage,

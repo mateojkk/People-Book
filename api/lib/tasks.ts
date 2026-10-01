@@ -196,6 +196,41 @@ export function composeNotice(memories: readonly PersonMemory[], tasks: readonly
   return second ? `${first} Also, ${second}` : first;
 }
 
+/**
+ * Every notification this app could have said, for the last `days` days.
+ *
+ * ── Why it is recomputed rather than recorded ────────────────────────────────
+ * Writing a row per notification would mean a Walrus write every time something
+ * surfaced: paid, slow, and a record of UI state that would still have to be
+ * reconciled with the ledger it was derived from.
+ *
+ * `composeNotice` is deterministic and reads only the ledger, so the honest way
+ * to get the last week is to run it for each of the last seven days. No storage,
+ * no writes, nothing to migrate, and it cannot disagree with the book.
+ *
+ * ── The limitation, stated rather than hidden ────────────────────────────────
+ * These are what the book *supports* for each day, not a transcript of what was
+ * on screen. If you settled a promise today, it drops out of yesterday's line as
+ * well, because there is no record of when it was settled beyond the revision.
+ * For a seven-day window the difference is a handful of items, and a fabricated
+ * transcript would be worse than an honest recomputation.
+ */
+export function noticeHistory(
+  memories: readonly PersonMemory[],
+  tasks: readonly Task[],
+  now: Date,
+  days = 7,
+): { date: string; notice: string }[] {
+  const out: { date: string; notice: string }[] = [];
+  for (let back = 0; back < days; back += 1) {
+    const then = new Date(now.getTime() - back * DAY_MS);
+    const dayTasks = tasksFor(memories, then);
+    const notice = composeNotice(memories, dayTasks, then);
+    if (notice) out.push({ date: then.toISOString().slice(0, 10), notice });
+  }
+  return out;
+}
+
 function when(days: number): string {
   if (days === 0) return "today";
   if (days === 1) return "tomorrow";

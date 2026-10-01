@@ -80,6 +80,11 @@ await page.route("**/api/today", (r) =>
   r.fulfill({
     json: {
       notice: "Maya\u2019s birthday is on the 14th \u2014 tomorrow. Also, Dev: send the signed contract \u2014 2 days late.",
+      history: [
+        { date: "2026-10-01", notice: "Maya\u2019s birthday is on the 14th \u2014 tomorrow. Also, Dev: send the signed contract \u2014 2 days late." },
+        { date: "2026-09-30", notice: "Dev: send the signed contract \u2014 a day late." },
+        { date: "2026-09-28", notice: "Dev: send the signed contract \u2014 3 days late." },
+      ],
       dueCount: 2,
       staleCount: 1,
       coverage: "complete",
@@ -241,6 +246,11 @@ check("an overdue item says how late", /2 days late/.test(today), today.slice(0,
 check("and an item due today says so", /\btoday\b/i.test(today));
 check("each row can be finished", await page.getByRole("button", { name: "Done" }).count() >= 2);
 check("and you can get back to the conversation", /Back to talking/.test(today));
+// Case-insensitive on purpose: the heading is uppercased in CSS, and innerText
+// returns what is rendered rather than what is written.
+check("notifications leave a seven day record", /told you . last 7 days/i.test(today), today.slice(0, 200));
+check("and past ones are in it", /a day late/.test(today) && /3 days late/.test(today));
+check("with the newest not repeated in the list", !/birthday is on the 14th/.test(today.slice(today.indexOf("Told you"))));
 // The one that made this an activity tracker.
 check("nothing scores the user", !/you said you would do|let pass|% of/i.test(today));
 await page.screenshot({ path: "/tmp/shots/20-today.png" });

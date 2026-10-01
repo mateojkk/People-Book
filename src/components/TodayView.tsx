@@ -27,6 +27,10 @@ export interface Task {
 
 interface Today {
   tasks: Task[];
+  /** The most recent notification, also shown as the banner. */
+  notice?: string;
+  /** Every notification of the last seven days. */
+  history?: { date: string; notice: string }[];
   /** Only what needs doing today -- the number a badge should show. */
   dueCount: number;
   staleCount: number;
@@ -119,6 +123,8 @@ export function TodayView({ onForget }: { onForget: (id: string) => void }) {
         </ul>
       )}
 
+      {!!data.history?.length && <ToldYou history={data.history} today={data.notice} />}
+
       {stale.length > 0 && (
         <section>
           <h2 className="text-[11px] font-bold uppercase tracking-[0.08em] text-faint">
@@ -183,6 +189,46 @@ function Row({
   );
 }
 
+
+/**
+ * The last seven days of notifications.
+ *
+ * A record, because a notification that only existed while it was on screen is
+ * not something you can check. Recomputed from the book each time it is opened,
+ * which is why it is labelled as what the book supports rather than as a
+ * transcript -- see api/lib/tasks.ts > noticeHistory.
+ */
+function ToldYou({ history, today }: { history: { date: string; notice: string }[]; today?: string }) {
+  // The newest line is already the banner; showing it twice in one screen is
+  // noise, so the record starts from yesterday.
+  const older = history.slice(today ? 1 : 0);
+  return (
+    <section className="border-t border-rule pt-5">
+      <h2 className="text-[11px] font-bold uppercase tracking-[0.08em] text-faint">Told you · last 7 days</h2>
+      <ul className="mt-3 space-y-2.5">
+        {older.map((entry) => (
+          <li key={entry.date} className="flex gap-3 text-[12.5px] leading-5">
+            <span className="tabular w-[5.5rem] shrink-0 whitespace-nowrap text-faint">{dayLabel(entry.date)}</span>
+            <span className="min-w-0 flex-1 text-muted">{entry.notice}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-3 text-[11px] leading-5 text-faint">
+        Recomputed from your book each time this is opened, so it reflects what the
+        book supports rather than a transcript of what was on screen.
+      </p>
+    </section>
+  );
+}
+
+function dayLabel(iso: string): string {
+  const then = Date.parse(`${iso}T00:00:00Z`);
+  if (!Number.isFinite(then)) return iso;
+  const days = Math.round((Date.now() - then) / 86_400_000);
+  if (days <= 1) return "yesterday";
+  if (days < 7) return `${days} days ago`;
+  return iso.slice(5);
+}
 
 function Empty() {
   return (

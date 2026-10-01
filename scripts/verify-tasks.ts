@@ -10,7 +10,7 @@
  */
 
 import { relevance, isDecayed, isStalePromise, selectLive, DECAY_FLOOR } from "../api/lib/decay.ts";
-import { tasksFor, composeNotice } from "../api/lib/tasks.ts";
+import { tasksFor, composeNotice, noticeHistory } from "../api/lib/tasks.ts";
 import { makeMemory, type MakeMemoryInput } from "../shared/memory-codec.ts";
 import type { PersonMemory } from "../shared/types.ts";
 
@@ -235,6 +235,40 @@ section("the notification speaks rather than counting");
   ];
   check("an unconfirmed guess is not announced", composeNotice(memories, tasksFor(memories, NOW), NOW) === "");
 }
+
+// ── Seven days of record ─────────────────────────────────────────────────────
+section("notifications leave a record for a week");
+
+{
+  const memories = [
+    memory({ person: "Maya", type: "trait", text: "Maya's birthday is on the 14th.", anniversary: "10-02", confidence: "confirmed" }),
+    memory({ person: "Dev", type: "promise", text: "Send Dev the signed contract.", dueAt: iso(-2), confidence: "confirmed" }),
+  ];
+  const tasks = tasksFor(memories, NOW);
+  const history = noticeHistory(memories, tasks, NOW);
+
+  check("today is in the record", history[0]?.date === "2026-10-01", history[0]);
+  check("and so are the days behind it", history.length >= 2, history.map((h) => h.date));
+  check("at most seven", history.length <= 7, history.length);
+  check("newest first", history[0]!.date > history[history.length - 1]!.date);
+  // Two days ago the contract was not yet late; yesterday it was a day late.
+  check("and the wording tracks the day", /a day late|2 days late/.test(history.map((h) => h.notice).join(" ")), history[1]?.notice);
+}
+
+{
+  // Nothing to say means no line, not an empty one.
+  const memories = [memory({ person: "Ana", type: "trait", text: "Ana is vegetarian.", confidence: "confirmed" })];
+  check("a quiet week records nothing", noticeHistory(memories, tasksFor(memories, NOW), NOW).length === 0);
+}
+
+{
+  // A settled promise drops out of the record as well as the list, which is the
+  // stated limitation: this is what the book supports, not a transcript.
+  const open = memory({ person: "Dev", type: "promise", text: "Send Dev the contract.", dueAt: iso(-2), confidence: "confirmed" });
+  const settled = { ...open, status: "settled" as const };
+  check("a settled promise is not announced", composeNotice([settled], tasksFor([settled], NOW), NOW) === "");
+}
+
 
 process.stdout.write("\n");
 if (failures > 0) {
