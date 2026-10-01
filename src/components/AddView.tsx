@@ -63,16 +63,16 @@ export function AddView({ onSaved }: { onSaved: () => void }) {
         onChange={(e) => setMessage(e.target.value)}
         rows={4}
         placeholder="Tell it something. “I said I'd send Maya the photos, she's going on a trip on the 12th” — it will propose what is worth keeping, and you decide."
-        className="w-full resize-y rounded border border-rule bg-paper p-2.5 text-sm text-ink outline-none placeholder:text-muted/60 focus:border-spine/50"
+        className="w-full resize-y rounded border border-rule bg-base p-2.5 text-sm text-text outline-none placeholder:text-muted/60 focus:border-accent/50"
       />
 
       <div className="flex flex-wrap gap-2">
         <button
           onClick={() => void extract()}
           disabled={busy || !message.trim()}
-          className="rounded bg-spine px-3 py-1.5 text-xs font-medium text-paper disabled:opacity-40"
+          className="rounded bg-accent px-3 py-1.5 text-xs font-medium text-base disabled:opacity-40"
         >
-          {busy ? "reading…" : "What is worth keeping?"}
+          {busy ? "reading…" : "Worth keeping?"}
         </button>
         <button
           onClick={() => {
@@ -80,7 +80,7 @@ export function AddView({ onSaved }: { onSaved: () => void }) {
             setResult(null);
             setError(null);
           }}
-          className="rounded border border-rule px-3 py-1.5 text-xs text-muted hover:text-ink"
+          className="rounded border border-rule px-3 py-1.5 text-xs text-muted hover:text-text"
         >
           clear
         </button>
@@ -91,7 +91,7 @@ export function AddView({ onSaved }: { onSaved: () => void }) {
       {result?.error && <ErrorNote message={result.error} />}
 
       {result && result.candidates.length === 0 && !result.error && (
-        <p className="rounded border border-rule bg-paper px-3 py-3 text-xs text-muted">
+        <p className="rounded border border-rule bg-base px-3 py-3 text-xs text-muted">
           Nothing worth keeping in that. Silence is a correct and common answer — the alternative is
           storing things you did not mean to store.
         </p>
@@ -105,10 +105,10 @@ export function AddView({ onSaved }: { onSaved: () => void }) {
           {result.candidates.map((c) => {
             const isSaved = saved.has(c.text);
             return (
-              <div key={c.text} className="rounded border border-rule bg-paper p-2.5">
-                <p className="text-xs leading-snug text-ink">{c.text}</p>
+              <div key={c.text} className="rounded border border-rule bg-base p-2.5">
+                <p className="text-xs leading-snug text-text">{c.text}</p>
                 <p className="mt-1 text-[11px] text-muted">
-                  <span className="text-ink/70">{c.person}</span> · {c.type}
+                  <span className="text-text/70">{c.person}</span> · {c.type}
                   {c.dueAt && <> · due {c.dueAt}</>} ·{" "}
                   <span className="tabular">{(c.confidence * 100).toFixed(0)}%</span> confident
                 </p>
@@ -116,7 +116,7 @@ export function AddView({ onSaved }: { onSaved: () => void }) {
                 <button
                   onClick={() => void confirm(c)}
                   disabled={isSaved || busy}
-                  className="mt-1.5 rounded border border-spine/40 px-2 py-1 text-[11px] text-spine disabled:opacity-50"
+                  className="mt-1.5 rounded border border-accent/40 px-2 py-1 text-[11px] text-accent disabled:opacity-50"
                 >
                   {isSaved ? "kept" : "keep this"}
                 </button>

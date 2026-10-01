@@ -94,11 +94,11 @@ export default function App() {
           </p>
         </header>
 
-        <div className="space-y-3 rounded border border-rule bg-paper p-4">
+        <div className="space-y-3 rounded border border-rule bg-base p-4">
           <p className="text-xs text-muted">
             Sign in with a Sui wallet. You will sign a one-time message so we can prove the address
             is yours — and then you create a Walrus Memory account that{" "}
-            <strong className="text-ink">you</strong> own, and grant this app scoped access to it.
+            <strong className="text-text">you</strong> own, and grant this app scoped access to it.
             You can take that access away on chain at any time, and we will not be able to stop you.
           </p>
 
@@ -110,7 +110,7 @@ export default function App() {
               <button
                 onClick={() => void signIn()}
                 disabled={state.phase === "connecting" || state.phase === "signing"}
-                className="rounded bg-spine px-3 py-1.5 text-xs font-medium text-paper disabled:opacity-50"
+                className="rounded bg-accent px-3 py-1.5 text-xs font-medium text-base disabled:opacity-50"
               >
                 {state.phase === "signing"
                   ? "check your wallet…"
@@ -122,7 +122,7 @@ export default function App() {
           </div>
 
           {state.phase === "signing" && (
-            <pre className="mono max-h-24 overflow-auto whitespace-pre-wrap rounded bg-paper/60 p-2 text-[10px] text-muted">
+            <pre className="mono max-h-24 overflow-auto whitespace-pre-wrap rounded bg-base/60 p-2 text-[10px] text-muted">
               {state.message}
             </pre>
           )}
@@ -153,17 +153,17 @@ export default function App() {
         <ol className="space-y-2 text-xs text-muted">
           {who.accountId ? (
             <li>
-              <strong className="text-ink">1.</strong> Add a delegate key so this app can read
+              <strong className="text-text">1.</strong> Add a delegate key so this app can read
               and write inside your existing account. You will see the exact key you are granting.
             </li>
           ) : (
             <>
               <li>
-                <strong className="text-ink">1.</strong> Create a Walrus Memory account. The
+                <strong className="text-text">1.</strong> Create a Walrus Memory account. The
                 account is owned by your address, not by us.
               </li>
               <li>
-                <strong className="text-ink">2.</strong> Add a delegate key so this app can read
+                <strong className="text-text">2.</strong> Add a delegate key so this app can read
                 and write inside it. You will see the exact key you are granting.
               </li>
             </>
@@ -171,7 +171,7 @@ export default function App() {
         </ol>
 
         {ownership.step !== "idle" && (
-          <p className="rounded border border-rule bg-paper px-3 py-2 text-xs text-muted">
+          <p className="rounded border border-rule bg-base px-3 py-2 text-xs text-muted">
             {ownership.step === "creating" && "Creating your account… approve in your wallet."}
             {ownership.step === "granting" && who.accountId && "Adding the access grant… approve in your wallet."}
             {ownership.step === "granting" && "Now adding the delegate key… approve in your wallet."}
@@ -211,12 +211,12 @@ export default function App() {
                 value={accountIdDraft}
                 onChange={(e) => setAccountIdDraft(e.target.value)}
                 placeholder="0x… or paste a link"
-                className="mono min-w-0 flex-1 rounded border border-rule bg-paper/60 px-2 py-1.5 text-xs text-ink outline-none placeholder:text-muted/60 focus:border-spine/50"
+                className="mono min-w-0 flex-1 rounded border border-rule bg-base/60 px-2 py-1.5 text-xs text-text outline-none placeholder:text-muted/60 focus:border-accent/50"
               />
               <button
                 onClick={() => void ownership.claimAccountId(accountIdDraft)}
                 disabled={!accountIdDraft.trim()}
-                className="rounded bg-spine px-3 py-1.5 text-xs font-medium text-paper disabled:opacity-40"
+                className="rounded bg-accent px-3 py-1.5 text-xs font-medium text-base disabled:opacity-40"
               >
                 Use this account
               </button>
@@ -229,7 +229,7 @@ export default function App() {
           <button
             onClick={() => void ownership.start()}
             disabled={!ownership.canStart || ownership.step === "creating" || ownership.step === "granting"}
-            className="rounded bg-spine px-3 py-1.5 text-xs font-medium text-paper disabled:opacity-40"
+            className="rounded bg-accent px-3 py-1.5 text-xs font-medium text-base disabled:opacity-40"
           >
             {ownership.step === "idle" || ownership.step === "error"
               ? who.accountId
@@ -252,9 +252,9 @@ export default function App() {
   // column belongs to it; the other views are the same data from another angle
   // and live in the rail instead of competing for the space.
   return (
-    <div className="flex h-screen overflow-hidden bg-paper">
+    <div className="flex h-screen overflow-hidden bg-base">
       <aside
-        className={`hidden shrink-0 flex-col border-r border-rule bg-paper transition-all duration-200 lg:flex ${
+        className={`hidden shrink-0 flex-col border-r border-rule bg-base transition-all duration-200 lg:flex ${
           sidebarCollapsed ? "w-14 items-center" : "w-60"
         }`}
       >
@@ -266,23 +266,23 @@ export default function App() {
         <div className={`pb-2 ${sidebarCollapsed ? "w-full px-2" : "px-3"}`}>
           <button
             onClick={() => setTab("talk")}
-            title="New conversation"
-            className={`flex items-center gap-2.5 rounded-xl border border-rule bg-paper text-left text-[13.5px] text-muted transition-colors hover:bg-paper-2 ${
+            title="Start over"
+            className={`flex items-center gap-2.5 rounded-xl border border-rule bg-base text-left text-[13.5px] text-muted transition-colors hover:bg-panel ${
               sidebarCollapsed ? "h-9 w-9 justify-center p-0" : "w-full px-3 py-2"
             }`}
           >
             <Icon name="new" />
-            {!sidebarCollapsed && <span>New conversation</span>}
+            {!sidebarCollapsed && <span>Start over</span>}
           </button>
         </div>
 
         <nav className={`space-y-0.5 ${sidebarCollapsed ? "w-full px-2" : "px-2"}`}>
           {(
             [
-              ["talk", "Talk"],
+              ["talk", "Talk to it"],
               ["nudges", "What came to you"],
               ["book", "Your book"],
-              ["add", "Add by hand"],
+              ["add", "Write one in"],
             ] as const
           ).map(([key, label]) => (
             <button
@@ -306,7 +306,7 @@ export default function App() {
           <>
             <div className="mt-5 px-4">
               <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-faint">
-            In this book
+            It knows
           </p>
             </div>
             <StorageNote />
@@ -320,10 +320,10 @@ export default function App() {
                 {who.address?.slice(0, 6)}…{who.address?.slice(-4)}
               </p>
               <div className="mt-1 flex items-center justify-between">
-                <span className="text-[11px] text-faint">Owned by you, on Sui</span>
+                <span className="text-[11px] text-faint">Yours, on Sui</span>
                 <a
                   href="/api/export"
-                  className="text-[11px] text-muted underline decoration-dotted underline-offset-2 hover:text-ink"
+                  className="text-[11px] text-muted underline decoration-dotted underline-offset-2 hover:text-text"
                 >
                   export
                 </a>
@@ -337,7 +337,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setSidebarCollapsed(false)}
-                className="grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-paper-2 hover:text-ink"
+                className="grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-panel hover:text-text"
                 title="Expand sidebar"
               >
                 <SidebarToggleIcon className="h-4 w-4" />
@@ -348,7 +348,7 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setSidebarCollapsed(true)}
-                  className="grid h-7 w-7 place-items-center rounded-lg text-muted hover:bg-paper-2 hover:text-ink"
+                  className="grid h-7 w-7 place-items-center rounded-lg text-muted hover:bg-panel hover:text-text"
                   title="Collapse sidebar"
                 >
                   <SidebarToggleIcon className="h-4 w-4" />
@@ -373,8 +373,8 @@ export default function App() {
         {modelReady === false && (
           <div className="border-b border-rule bg-warn/10 px-5 py-2.5">
             <p className="text-[13px] leading-5 text-warn">
-              <strong className="font-medium">No model configured.</strong> GROQ_API_KEY is not set,
-              so nothing said here is remembered and replies are placeholders. Set it and restart.
+              <strong className="font-medium">Nothing will be remembered.</strong> GROQ_API_KEY is
+              not set, so it has no model to think with and replies are placeholders. Set it, restart.
             </p>
           </div>
         )}
@@ -398,19 +398,20 @@ export default function App() {
           )}
         </main>
 
-        {/* Floating onchain status card matching reference UI in bottom-right */}
+        {/* What the app is actually running on. Worth being able to check, so it
+            gets a real card rather than a claim in the README. */}
         {showStatusCard && who?.signedIn ? (
-          <aside className="fixed bottom-5 right-5 z-40 w-72 rounded-2xl border border-rule bg-paper-2/95 p-4 shadow-2xl backdrop-blur-md transition-all">
+          <aside className="fixed bottom-5 right-5 z-40 w-72 rounded-2xl border border-rule bg-panel/95 p-4 shadow-2xl backdrop-blur-md transition-all">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-2">
                 <Mark className="h-5 w-5" />
-                <span className="text-[13px] font-semibold text-ink">Walrus Memory</span>
+                <span className="text-[13px] font-semibold text-text">Walrus Memory</span>
               </div>
               <button
                 type="button"
                 onClick={() => setShowStatusCard(false)}
-                className="grid h-6 w-6 place-items-center rounded-md text-muted hover:bg-paper-3 hover:text-ink"
-                title="Dismiss status card"
+                className="grid h-6 w-6 place-items-center rounded-md text-muted hover:bg-raised hover:text-text"
+                title="Close"
               >
                 <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
                   <path d="M3 3l10 10M13 3l-10 10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
@@ -421,17 +422,17 @@ export default function App() {
               Save and sync your life memories. Owned by your Sui wallet and revocable onchain anytime.
             </p>
 
-            <div className="mt-3 rounded-xl border border-rule bg-paper/70 p-2.5">
+            <div className="mt-3 rounded-xl border border-rule bg-base/70 p-2.5">
               <div className="flex items-center justify-between text-[11px]">
                 <span className="text-faint">Wallet</span>
-                <span className="mono text-ink">
+                <span className="mono text-text">
                   {who.address ? `${who.address.slice(0, 6)}…${who.address.slice(-4)}` : "—"}
                 </span>
               </div>
               <div className="mt-1.5 flex items-center justify-between text-[11px]">
                 <span className="text-faint">Status</span>
-                <span className="flex items-center gap-1 font-medium text-spine">
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-spine" />
+                <span className="flex items-center gap-1 font-medium text-accent">
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
                   Active delegate
                 </span>
               </div>
@@ -440,14 +441,14 @@ export default function App() {
             <div className="mt-3 flex gap-2">
               <a
                 href="/api/export"
-                className="flex-1 rounded-xl border border-rule bg-paper py-1.5 text-center text-xs font-medium text-muted transition-colors hover:bg-paper-3 hover:text-ink"
+                className="flex-1 rounded-xl border border-rule bg-base py-1.5 text-center text-xs font-medium text-muted transition-colors hover:bg-raised hover:text-text"
               >
                 Export ledger
               </a>
               <button
                 type="button"
                 onClick={() => setTab("book")}
-                className="flex-1 rounded-xl bg-ink py-1.5 text-center text-xs font-medium text-paper transition-opacity hover:opacity-90"
+                className="flex-1 rounded-xl bg-text py-1.5 text-center text-xs font-medium text-base transition-opacity hover:opacity-90"
               >
                 View book
               </button>
@@ -458,7 +459,7 @@ export default function App() {
             <button
               type="button"
               onClick={() => setShowStatusCard(true)}
-              className="fixed bottom-5 right-5 z-40 grid h-10 w-10 place-items-center rounded-full border border-rule bg-paper-2 text-muted shadow-lg hover:border-rule-soft hover:text-ink"
+              className="fixed bottom-5 right-5 z-40 grid h-10 w-10 place-items-center rounded-full border border-rule bg-panel text-muted shadow-lg hover:border-rule-soft hover:text-text"
               title="Show Walrus Memory status"
             >
               <Mark className="h-5 w-5" />
@@ -504,20 +505,20 @@ function StorageNote() {
   return (
     <div className="px-4 py-2.5">
       <p className="text-[11.5px] leading-4 text-muted">
-        {state === "loading" && "Reading your book…"}
+        {state === "loading" && "Reading your book\u2026"}
         {state === "ok" && count !== null && (
           <>
-            <span className="tabular font-medium text-ink">{count}</span> encrypted blobs in
-            Walrus Memory
+            <span className="tabular font-medium text-text">{count}</span> encrypted blobs, all
+            yours
           </>
         )}
-        {state === "unknown" && "Your book lives in your own Walrus Memory account."}
+        {state === "unknown" && "Your book lives in an account you own."}
       </p>
     </div>
   );
 }
 
-function Mark({ className = "h-5 w-5 text-spine" }: { className?: string }) {
+function Mark({ className = "h-5 w-5 text-accent" }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor">
       <path

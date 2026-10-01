@@ -481,6 +481,11 @@ this app access are both signed by your wallet, so a new user needs a little SUI
 for gas. That friction is the cost of not being able to hold your memory for you.
 Removing it means Google login and gasless transactions, which needs Enoki.
 
+## Rules
+
+`RULES.md` records the rules this project broke and the reasons for them — chiefly that
+nothing is described as working unless it was run. Read it before changing the UI.
+
 ## What is next
 
 Each item removes a limitation named in the section above, ordered by how much

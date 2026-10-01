@@ -107,20 +107,20 @@ export function BasisNote({
     <p className="text-[11px] leading-relaxed text-muted">
       {basis.memoryDisabled ? (
         <>
-          Memory is <strong className="text-ink">off</strong>. Every one of these reminders is a
+          Memory is <strong className="text-text">off</strong>. Every one of these reminders is a
           recall, so with memory off there is nothing to show — not a worse version, nothing. That is
           the honest baseline.
         </>
       ) : (
         <>
-          Chosen from <strong className="text-ink">{basis.confirmedCount}</strong> confirmed
+          Chosen from <strong className="text-text">{basis.confirmedCount}</strong> confirmed
           memor{basis.confirmedCount === 1 ? "y" : "ies"} out of {basis.memoryCount} in your book, by
           rules with no model involved — dates inside {basis.horizonDays} days, promises still open,
           people gone quiet, and your own unkept promises.
           {basis.inferredCount > 0 && (
             <>
               {" "}
-              <span className="text-spine/80">
+              <span className="text-accent/80">
                 {basis.inferredCount} extracted but unconfirmed memor{basis.inferredCount === 1 ? "y" : "ies"}{" "}
                 {basis.inferredCount === 1 ? "is" : "are"} in your ledger and {basis.inferredCount === 1 ? "is" : "are"} not
                 allowed to appear here.

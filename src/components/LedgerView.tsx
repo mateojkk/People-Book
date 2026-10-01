@@ -19,7 +19,7 @@ interface MemoriesResponse {
 }
 
 const CONFIDENCE_STYLE: Record<string, string> = {
-  confirmed: "border-spine/30 text-spine",
+  confirmed: "border-accent/30 text-accent",
   inferred: "border-warn/30 text-warn",
 };
 
@@ -85,9 +85,9 @@ export function LedgerView({ onForget }: { onForget: (id: string) => void }) {
       ) : (
         <ul className="space-y-1.5">
           {shown.map((m) => (
-            <li key={m.id} className="rounded border border-rule bg-paper px-2.5 py-2">
+            <li key={m.id} className="rounded border border-rule bg-base px-2.5 py-2">
               <div className="flex items-start justify-between gap-2">
-                <p className="text-xs leading-snug text-ink">{m.text}</p>
+                <p className="text-xs leading-snug text-text">{m.text}</p>
                 <span
                   className={`mono shrink-0 rounded border px-1.5 py-0.5 text-[10px] uppercase tracking-wider ${CONFIDENCE_STYLE[m.confidence]}`}
                 >
@@ -95,7 +95,7 @@ export function LedgerView({ onForget }: { onForget: (id: string) => void }) {
                 </span>
               </div>
               <p className="mt-1 text-[11px] text-muted">
-                <span className="text-ink/70">{m.person}</span> · {m.type}
+                <span className="text-text/70">{m.person}</span> · {m.type}
                 {m.status !== "active" && <> · {m.status}</>}
                 {m.dueAt && <> · due {m.dueAt}</>}
                 {m.occurredAt && <> · {m.occurredAt}</>}
@@ -110,7 +110,7 @@ export function LedgerView({ onForget }: { onForget: (id: string) => void }) {
                       await api.post(`/api/memories/${m.id}/resolve`, { status: "kept" });
                       await load();
                     }}
-                    className="text-[11px] text-spine underline decoration-dotted underline-offset-2"
+                    className="text-[11px] text-accent underline decoration-dotted underline-offset-2"
                   >
                     I did it
                   </button>
