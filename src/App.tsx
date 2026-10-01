@@ -37,7 +37,6 @@ export default function App() {
   const [accountIdDraft, setAccountIdDraft] = useState("");
   const [modelReady, setModelReady] = useState<boolean | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
-  const [showStatusCard, setShowStatusCard] = useState(true);
 
   // Is there actually a model behind this?
   //
@@ -398,74 +397,6 @@ export default function App() {
           )}
         </main>
 
-        {/* What the app is actually running on. Worth being able to check, so it
-            gets a real card rather than a claim in the README. */}
-        {showStatusCard && who?.signedIn ? (
-          <aside className="fixed bottom-5 right-5 z-40 w-72 rounded-2xl border border-rule bg-panel/95 p-4 shadow-2xl backdrop-blur-md transition-all">
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-2">
-                <Mark className="h-5 w-5" />
-                <span className="text-[13px] font-semibold text-text">Walrus Memory</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowStatusCard(false)}
-                className="grid h-6 w-6 place-items-center rounded-md text-muted hover:bg-raised hover:text-text"
-                title="Close"
-              >
-                <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-                  <path d="M3 3l10 10M13 3l-10 10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-                </svg>
-              </button>
-            </div>
-            <p className="mt-2 text-xs leading-relaxed text-muted">
-              Save and sync your life memories. Owned by your Sui wallet and revocable onchain anytime.
-            </p>
-
-            <div className="mt-3 rounded-xl border border-rule bg-base/70 p-2.5">
-              <div className="flex items-center justify-between text-[11px]">
-                <span className="text-faint">Wallet</span>
-                <span className="mono text-text">
-                  {who.address ? `${who.address.slice(0, 6)}…${who.address.slice(-4)}` : "—"}
-                </span>
-              </div>
-              <div className="mt-1.5 flex items-center justify-between text-[11px]">
-                <span className="text-faint">Status</span>
-                <span className="flex items-center gap-1 font-medium text-accent">
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
-                  Active delegate
-                </span>
-              </div>
-            </div>
-
-            <div className="mt-3 flex gap-2">
-              <a
-                href="/api/export"
-                className="flex-1 rounded-xl border border-rule bg-base py-1.5 text-center text-xs font-medium text-muted transition-colors hover:bg-raised hover:text-text"
-              >
-                Export ledger
-              </a>
-              <button
-                type="button"
-                onClick={() => setTab("book")}
-                className="flex-1 rounded-xl bg-text py-1.5 text-center text-xs font-medium text-base transition-opacity hover:opacity-90"
-              >
-                View book
-              </button>
-            </div>
-          </aside>
-        ) : (
-          who?.signedIn && (
-            <button
-              type="button"
-              onClick={() => setShowStatusCard(true)}
-              className="fixed bottom-5 right-5 z-40 grid h-10 w-10 place-items-center rounded-full border border-rule bg-panel text-muted shadow-lg hover:border-rule-soft hover:text-text"
-              title="Show Walrus Memory status"
-            >
-              <Mark className="h-5 w-5" />
-            </button>
-          )
-        )}
       </div>
     </div>
   );
