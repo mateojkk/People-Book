@@ -140,7 +140,18 @@ the person looking at it that is what it was.
   the ambiguity.
 - If a layout can be read as broken, it is broken, whatever the CSS intends.
 
-## 15. The dependency list is a claim
+## 15. A destination is not a receipt
+
+Three peer tabs — talk, today, the book — is a to-do app with a chat window, and
+a manual "add a memory" form next to a conversation that already learns from what
+you say is scaffolding for a product that no longer needs it.
+
+- The conversation is where you live. Everything else is a receipt behind it.
+- Reach an audit surface from the claim it backs up, not from the same row as the
+  main thing. A citation you can follow is the point; a database tab is not.
+- If a feature only makes sense while the product is worse, delete it.
+
+## 16. The dependency list is a claim
 
 Unused dependencies were removed once and the list still drifted. Every package
 added has to be used by something in `src/` or it comes out.

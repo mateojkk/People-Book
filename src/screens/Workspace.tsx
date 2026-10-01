@@ -1,4 +1,12 @@
-type Tab = "talk" | "today" | "book" | "add";
+/**
+ * Three things, only one of which is a destination.
+ *
+ * "talk" is where you live. "today" is reached from the notification and "book"
+ * from a citation or the quiet link at the bottom -- both are receipts behind the
+ * conversation, not peers of it. Three tabs side by side is how a chatbot
+ * becomes a to-do app with a chat window.
+ */
+type Tab = "talk" | "today" | "book";
 
 /**
  * The notification.
@@ -46,7 +54,6 @@ import { ChatView } from "../components/ChatView.tsx";
 import { NudgeView } from "../components/NudgeView.tsx";
 import { TodayView } from "../components/TodayView.tsx";
 import { LedgerView } from "../components/LedgerView.tsx";
-import { AddView } from "../components/AddView.tsx";
 import { ErrorNote } from "../components/bits.tsx";
 import { Mark } from "./Landing.tsx";
 
@@ -64,7 +71,6 @@ export function Workspace({
   address,
   version,
   onForget,
-  onSaved,
   error,
   modelReady,
 }: {
@@ -73,7 +79,6 @@ export function Workspace({
   address?: string;
   version: number;
   onForget: (id: string) => void;
-  onSaved: () => void;
   error?: string | null;
   modelReady: boolean | null;
 }) {
@@ -90,62 +95,49 @@ export function Workspace({
           {!sidebarCollapsed && <span className="text-[15px] font-semibold tracking-tight">People Book</span>}
         </div>
 
-        <div className={`pb-2 ${sidebarCollapsed ? "w-full px-2" : "px-3"}`}>
+        <nav className="px-2">
           <button
             onClick={() => setTab("talk")}
-            title="Start over"
-            className={`flex items-center gap-2.5 rounded-xl border border-rule bg-base text-left text-[13.5px] text-muted transition-colors hover:bg-panel ${
-              sidebarCollapsed ? "h-9 w-9 justify-center p-0" : "w-full px-3 py-2"
-            }`}
+            aria-current={tab === "talk"}
+            className="rail-item flex w-full items-center gap-2.5 px-2.5 py-2 text-left text-[13px] text-quiet"
           >
-            <Icon name="new" />
-            {!sidebarCollapsed && <span>Start over</span>}
+            <Icon name="talk" />
+            <span>Talk to it</span>
           </button>
-        </div>
-
-        <nav className={`space-y-0.5 ${sidebarCollapsed ? "w-full px-2" : "px-2"}`}>
-          {(
-            [
-              ["talk", "Talk to it"],
-              ["book", "Your book"],
-              ["add", "Write one in"],
-            ] as const
-          ).map(([key, label]) => (
-            <button
-              key={key}
-              onClick={() => setTab(key)}
-              aria-current={tab === key}
-              title={sidebarCollapsed ? label : undefined}
-              className={`rail-item flex items-center text-muted transition-colors ${
-                sidebarCollapsed
-                  ? "h-9 w-9 justify-center rounded-lg p-0"
-                  : "w-full gap-2.5 px-2.5 py-2 text-left text-[13.5px]"
-              }`}
-            >
-              <Icon name={key} />
-              {!sidebarCollapsed && <span>{label}</span>}
-            </button>
-          ))}
+          {/* Always reachable, and always quiet. It only showed while you were
+              already on it, which made the audit surface unreachable from the one
+              place you would want to check something. */}
+          <button
+            onClick={() => setTab("book")}
+            aria-current={tab === "book"}
+            className="rail-item flex w-full items-center gap-2.5 px-2.5 py-2 text-left text-[12.5px] text-faint"
+          >
+            <BookmarkIcon className="h-[15px] w-[15px]" />
+            <span>the book</span>
+          </button>
         </nav>
 
-        <div className="mt-auto flex w-full flex-col border-t border-rule">
+        <div className="mt-auto">
           {!sidebarCollapsed && (
-            <div className="px-4 py-3">
+            <div className="px-4 py-2.5">
               <p className="mono truncate text-[11px] text-faint">
                 {address?.slice(0, 6)}…{address?.slice(-4)}
               </p>
               <p className="mt-1 text-[11px] text-faint">Yours, on Sui</p>
             </div>
           )}
-
-          {/* Sidebar collapse/expand toggle button matching inspiration */}
-          <div className={`p-2 flex ${sidebarCollapsed ? "justify-center" : "justify-between items-center px-3"}`}>
+          <div
+            className={`flex border-t border-rule px-2 py-2 ${
+              sidebarCollapsed ? "justify-center" : "items-center justify-between px-3"
+            }`}
+          >
             {sidebarCollapsed ? (
               <button
                 type="button"
                 onClick={() => setSidebarCollapsed(false)}
-                className="grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-panel hover:text-text"
+                className="grid h-8 w-8 place-items-center rounded-lg text-muted transition-colors hover:bg-panel hover:text-text"
                 title="Expand sidebar"
+                aria-label="Expand sidebar"
               >
                 <SidebarToggleIcon className="h-4 w-4" />
               </button>
@@ -155,8 +147,9 @@ export function Workspace({
                 <button
                   type="button"
                   onClick={() => setSidebarCollapsed(true)}
-                  className="grid h-7 w-7 place-items-center rounded-lg text-muted hover:bg-panel hover:text-text"
+                  className="grid h-7 w-7 place-items-center rounded-lg text-muted transition-colors hover:bg-panel hover:text-text"
                   title="Collapse sidebar"
+                  aria-label="Collapse sidebar"
                 >
                   <SidebarToggleIcon className="h-4 w-4" />
                 </button>
@@ -191,13 +184,22 @@ export function Workspace({
         )}
 
         <main className="min-h-0 flex-1">
-          {tab === "talk" && <ChatView />}
+          {tab === "talk" && <ChatView onOpenBook={() => setTab("book")} />}
           {tab !== "talk" && (
             <div className="h-full overflow-y-auto px-5 py-8">
               <div className="mx-auto w-full max-w-thread">
                 {tab === "today" && <TodayView key={version} onForget={onForget} />}
-                {tab === "book" && <LedgerView key={version} onForget={onForget} />}
-                {tab === "add" && <AddView onSaved={onSaved} />}
+                {tab === "book" && (
+                  <div>
+                    <button
+                      onClick={() => setTab("talk")}
+                      className="mb-3 text-[11.5px] text-faint transition-colors hover:text-muted"
+                    >
+                      ← Back to talking
+                    </button>
+                    <LedgerView key={version} onForget={onForget} />
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -219,13 +221,35 @@ function SidebarToggleIcon({ className = "h-4 w-4" }: { className?: string }) {
 }
 
 
+/**
+ * The bookmark, from AnimateIcons (MIT, Avijit Dey). Taken as the path rather
+ * than the animated component: the animation pulls in `motion` for one glyph, and
+ * a dependency has to earn itself. Say the word and it gets the hover.
+ */
+export function BookmarkIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M4 17.9808V9.70753C4 6.07416 4 4.25748 5.17157 3.12874C6.34315 2 8.22876 2 12 2C15.7712 2 17.6569 2 18.8284 3.12874C20 4.25748 20 6.07416 20 9.70753V17.9808C20 20.2867 20 21.4396 19.2272 21.8523C17.7305 22.6514 14.9232 19.9852 13.59 19.1824C12.8168 18.7168 12.4302 18.484 12 18.484C11.5698 18.484 11.1832 18.7168 10.41 19.1824C9.0768 19.9852 6.26947 22.6514 4.77285 21.8523C4 21.4396 4 20.2867 4 17.9808Z" />
+    </svg>
+  );
+}
+
 function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, string> = {
     new: "M8 3.5v9M3.5 8h9",
     talk: "M3 5.5A1.5 1.5 0 0 1 4.5 4h7A1.5 1.5 0 0 1 13 5.5v4a1.5 1.5 0 0 1-1.5 1.5H7l-3 2.5v-2.5h-.5A1.5 1.5 0 0 1 3 9.5v-4Z",
     today: "M8 2v3M8 11v3M2 8h3M11 8h3M4.2 4.2l2.1 2.1M9.7 9.7l2.1 2.1M11.8 4.2l-2.1 2.1M6.3 9.7l-2.1 2.1",
     book: "M3 3.5h10v9H3v-9Zm0 2.5h10M6 9h4",
-    add: "M8 3.5v9M3.5 8h9",
+
   };
   return (
     <svg width="15" height="15" viewBox="0 0 16 16" fill="none" className="shrink-0 opacity-80" aria-hidden="true">

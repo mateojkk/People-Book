@@ -192,6 +192,21 @@ check("what it remembered is attributed to a person", body.includes("Mara is all
 check("the unprompted nudge is shown", body.includes("you owe Dev"));
 check("its sources are offered", body.includes("From 1 thing"));
 
+// Following a citation is the whole reason the book exists.
+const cited = page.getByText("From 1 thing");
+if (await cited.count()) {
+  await cited.first().click();
+  await page.waitForTimeout(200);
+  const opened = page.getByText(/See everything it has/);
+  if (await opened.count()) {
+    await opened.first().click();
+    await page.waitForTimeout(500);
+    check("a citation opens the book", /Your book|Partial view/.test(await page.evaluate(() => document.body.innerText)), "the audit surface is what a citation is for");
+  }
+}
+await page.goto(BASE + "/app", { waitUntil: "networkidle" });
+await page.waitForTimeout(500);
+
 const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
 check("nothing overflows horizontally", !overflow);
 
@@ -214,6 +229,8 @@ const shell = await page.evaluate(() => document.body.innerText);
 check("something is said to you on arrival, in a sentence", /birthday is on the 14th . tomorrow/i.test(shell), JSON.stringify(shell.slice(0, 160)));
 check("no task count badge anywhere", !/\d+ things need/i.test(shell));
 check("and Today is not a peer tab in the rail", !/^Today$/m.test(shell));
+check("there is no manual add form", !/Write one in|Add by hand/i.test(shell));
+check("the book is reachable from the conversation", /the book/i.test(shell));
 
 // It is reached through the notice.
 await page.getByRole("button", { name: /Open/ }).click();

@@ -37,7 +37,7 @@ const nextId = () => `t${(seq += 1)}`;
  */
 const LIVE_EDGE_PX = 100;
 
-export function ChatView() {
+export function ChatView({ onOpenBook }: { onOpenBook?: () => void }) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
@@ -206,6 +206,7 @@ export function ChatView() {
                   key={turn.id}
                   turn={turn}
                   onUndo={undo}
+                  onOpenBook={onOpenBook}
                   onRetry={i === turns.length - 1 ? regenerate : undefined}
                 />
               ))}
@@ -314,10 +315,12 @@ function Composer({
 function TurnBlock({
   turn,
   onUndo,
+  onOpenBook,
   onRetry,
 }: {
   turn: Turn;
   onUndo: (turnId: string, memoryId: string) => void;
+  onOpenBook?: () => void;
   onRetry?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
@@ -429,6 +432,13 @@ function TurnBlock({
               </li>
             ))}
           </ul>
+          {/* Following a citation is the reason the book exists, so it opens the
+              book rather than expanding anything here. */}
+          {onOpenBook && (
+            <button onClick={onOpenBook} className="mt-1.5 text-[11.5px] text-faint transition-colors hover:text-muted">
+              See everything it has →
+            </button>
+          )}
         </details>
       )}
 

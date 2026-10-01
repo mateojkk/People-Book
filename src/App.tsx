@@ -11,14 +11,13 @@ import { useOwnership } from "./lib/ownership.ts";
 import { api } from "./lib/api.ts";
 import { NudgeView } from "./components/NudgeView.tsx";
 import { LedgerView } from "./components/LedgerView.tsx";
-import { AddView } from "./components/AddView.tsx";
 import { Workspace } from "./screens/Workspace.tsx";
 import { Landing } from "./screens/Landing.tsx";
 import { SignIn } from "./screens/SignIn.tsx";
 import { ErrorNote } from "./components/bits.tsx";
 import type { PersonMemory } from "./types.ts";
 
-type Tab = "talk" | "today" | "book" | "add";
+type Tab = "talk" | "today" | "book";
 
 interface Whoami {
   signedIn: boolean;
@@ -158,7 +157,6 @@ export default function App() {
       address={who?.address}
       version={version}
       onForget={forget}
-      onSaved={() => setVersion((v) => v + 1)}
       error={error}
       modelReady={modelReady}
     />
