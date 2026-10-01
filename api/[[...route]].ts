@@ -17,7 +17,6 @@ import type { Context } from "hono";
 import { computeNudges, elisionLine } from "./lib/ranking.ts";
 import { capture, phraseNudges } from "./lib/capture.ts";
 import { PeopleBookStore, MemoryNotFoundError } from "./lib/store.ts";
-import { lookupAccountId, recordAccountId } from "./lib/accounts.ts";
 import { isConfigError, isWriteError, NAMESPACE, RECALL_LIMIT } from "./lib/memwal.ts";
 import {
   delegateIsRegistered,
@@ -73,10 +72,9 @@ async function resolveStore(c: Context): Promise<
   // the same memory space with no chain round trip.
   let accountId: string | null = session.accountId;
   try {
-    // Session cookie first: it is free and per-browser. Then the database, which
-    // is what survives a new browser or a new device. Only then the chain, which
-    // cannot help for a shared object but costs one call.
-    if (!accountId) accountId = await lookupAccountId(session.address);
+    // The cookie first: it is free and per-browser. The registry answers for any
+    // address on any device in one read, which is what makes a new browser and a
+    // new device work with nothing stored anywhere.
     if (!accountId) accountId = await findAccountId(session.address);
   } catch (error) {
     return {
@@ -226,8 +224,7 @@ app.post("/api/auth/session", async (c) => {
 app.get("/api/auth/whoami", async (c) => {
   const session = await readSession(parseCookies(c.req.header("cookie"))[SESSION_COOKIE]);
   if (!session) return c.json({ signedIn: false }, 200);
-  const accountId =
-    session.accountId ?? (await lookupAccountId(session.address)) ?? (await findAccountId(session.address).catch(() => null));
+  const accountId = session.accountId ?? (await findAccountId(session.address).catch(() => null));
 
   // Whether OUR delegate key is already on that account decides whether setup is
   // finished, and it is NOT implied by the account existing. A user who already

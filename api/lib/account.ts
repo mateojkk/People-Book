@@ -259,26 +259,79 @@ export async function inspectOwnership(address: string): Promise<OwnershipStatus
 }
 
 /**
- * Locates the MemWalAccount owned by an address.
+ * Resolves the MemWalAccount owned by an address, by reading the registry.
  *
- * The registry enforces one account per address, so this should return at most
- * one. A miss means "no account", which is different from "the RPC is down" and
- * is why the caller keeps those two apart.
+ * The registry is a permanent, append-only `Table<address, ID>`, so this is
+ * exact, public, O(1), and available on any device with no stored state. A miss
+ * means "no account yet", which the caller keeps distinct from "the RPC is
+ * down".
  */
 export async function findAccountId(address: string): Promise<string | null> {
   const client = suiClient();
+  const { registryId } = await deployment();
 
-  const { packageId } = await deployment();
-  const response = await client.core.listOwnedObjects({
-    owner: normalize(address),
-    type: `${packageId}::account::MemWalAccount`,
-    limit: 10,
-  });
+  // The registry is `accounts: Table<address, ID>` -- a permanent, append-only
+  // public mapping from owner address to account id, read straight off the
+  // shared object. Confirmed on mainnet: 6502 entries, nameType "address",
+  // valueType 0x2::object::ID.
+  //
+  // This is the O(1) path: one read for the table's parent UID (cached, because
+  // a field's UID never changes), then a single dynamic-field read for the
+  // address. No indexer, no database, no event scan, no permission.
+  const parent = await accountsTableId(registryId);
+  if (!parent) return null;
 
-  for (const object of response.objects ?? []) {
-    if (object.objectId) return normalize(object.objectId);
+  try {
+    const field = await client.getDynamicField({
+      parentId: parent,
+      // A Sui address is its 32 bytes in BCS.
+      name: { type: "address", bcs: addressBytes(address) },
+    });
+    const bcs = field?.dynamicField?.value?.bcs;
+    if (!bcs || bcs.length !== 32) return null;
+    return "0x" + Buffer.from(bcs).toString("hex");
+  } catch {
+    // No entry for this address: the user has not created an account. The
+    // registry answers a miss by refusing, which is the expected path for every
+    // first-time visitor and must not look like a failure.
+    return null;
   }
-  return null;
+}
+
+/** The 32 raw bytes of a Sui address, which is exactly how BCS encodes one. */
+function addressBytes(address: string): Uint8Array {
+  const hex = normalize(address).replace(/^0x/, "").padStart(64, "0").slice(0, 64);
+  return new Uint8Array((hex.match(/../g) ?? []).map((byte) => parseInt(byte, 16)));
+}
+
+/**
+ * The UID of the registry's `accounts` table, which is the parent object every
+ * owner entry hangs off.
+ *
+ * Cached per registry: a struct field's UID is fixed for the life of the object,
+ * so this is read once per process rather than on every sign-in.
+ */
+const tableIdCache = new Map<string, string | null>();
+
+async function accountsTableId(registryId: string): Promise<string | null> {
+  const cached = tableIdCache.get(registryId);
+  if (cached !== undefined) return cached;
+
+  let id: string | null = null;
+  try {
+    const client = suiClient();
+    // `include: { json: true }` for the parsed struct. Asking for `content`
+    // instead returns raw BCS, and a Table serialises as { id, size } -- not the
+    // `data` array a vector would have, which is the trap that made this look
+    // like an empty registry.
+    const response = await client.getObject({ objectId: registryId, include: { json: true } });
+    id = ((response?.object?.json as { accounts?: { id?: string } } | undefined)?.accounts?.id) ?? null;
+  } catch {
+    id = null;
+  }
+
+  tableIdCache.set(registryId, id);
+  return id;
 }
 
 /**

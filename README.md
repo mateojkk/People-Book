@@ -15,7 +15,7 @@ Built for [Walrus Sessions 8: Chatbots That Remember](https://thewalrussessions.
 | **It cannot make a claim it can't prove** | Unconfirmed extractions are structurally incapable of reaching you as a statement about your life. |
 | **It tells you when it holds something back** | Suppressed topics are announced with the date the rule was set, not silently dropped. |
 | **You own the account** | You sign the transactions. The app holds a scoped, onchain-revocable delegate key and nothing else. |
-| **It survives a refresh** | Your account id is remembered server-side, so a new browser or a cleared cookie still finds your book. |
+| **It survives a refresh** | Your account is read from the onchain registry, so a new browser or a cleared cookie still finds your book. |
 | **Cannot touch your other memory** | One forced namespace. No route can name another, and the store throws if asked to. |
 | **Verified on mainnet** | 72 blobs written, recalled, ranked and forgotten against the production relayer. |
 
@@ -285,14 +285,201 @@ this app access are both signed by your wallet, so a new user needs a little SUI
 for gas. That friction is the cost of not being able to hold your memory for you.
 Removing it means Google login and gasless transactions, which needs Enoki.
 
-**One small mapping has to be stored somewhere, and it holds nothing.** A
-Walrus Memory account is a *shared* Sui object, so it cannot be looked up from
-the address that owns it — shared objects are not enumerable. So the account id is
-recorded server-side. That table is one row per user: an address and an account
-id that user already owns. No memory content, no people, no claims, no keys. The
-book stays in the user's own encrypted, revocable Walrus account, and deleting
-every row loses no memories. With the database unset the app still runs on the
-session cookie alone, which covers one browser.
+**Your account is found from your wallet address, so there is nothing to store
+and nothing to copy.** A Walrus Memory account is a *shared* Sui object, which
+means you cannot list it from the address that owns it. But the `AccountRegistry`
+is a permanent, append-only, public `Table<address, ID>` on Sui, so the app reads
+your account out of it in a single lookup. No database, no indexer, no API key,
+no pasted id, and it works on a new device with nothing set up. If you have never
+created an account, the registry simply has no entry for you, and the app offers
+to make one.
+
+## How it works
+
+```
+Sui wallet  →  sign a single-use challenge  →  httpOnly session (address verified)
+                    ↓
+        create_account          ← owner-signed
+        add_delegate_key        ← owner-signed, scoped to that one account
+                    ↓
+   Walrus Memory, namespace `book`, inside the USER's own account
+                    ↓
+   typed memories: person · type · status · confidence · dates · rev
+                    ↓
+   deterministic ranking → dates · promises · absence · open loops · follow-through
+                    ↓
+   taboo filter last → elide, then announce
+                    ↓
+   Groq gpt-oss-120b rephrases — optional, see "The LLM does not decide anything"
+```
+
+### The LLM does not decide anything
+
+`api/lib/ranking.ts` has no model import. It decides *what* surfaces, using rules
+that are inspectable and fully covered by assertions you can run with no network,
+no key and no wallet — 70 for the codec, 59 for the ranking, 129 in total:
+
+```bash
+npm run verify
+```
+
+The model only rewrites the wording of a sentence that was already determined. If
+Groq is unreachable, `phraseNudges()` falls back to the deterministic phrasing.
+Losing the API key costs you the prose, not the product — which matters, because
+a memory feature that dies when a vendor has a bad afternoon is decorative.
+
+Capture is likewise extract-only: the model proposes, a person disposes. Nothing
+it produces is written without someone confirming it, and a candidate naming
+anyone not already in the book is dropped before it can be shown.
+
+### Memory is the user's, provably
+
+MemWal scopes every read and write to `owner + namespace + app id`. Rather than
+holding one key and namespacing per user — which would make this app the
+custodian of every book it holds — the user runs the setup:
+
+**This app cannot read memory that is not its own.** A Walrus account can hold
+many namespaces, and a user connecting their wallet may already have memories
+there from other apps or their own use. So every read and write is confined to
+one forced namespace, `book`, and that name is the boundary:
+
+- no route accepts a namespace from the request — the store is constructed in
+  exactly one place, from a constant
+- the store throws on any namespace other than `book` or `book-*`, at
+  construction, so a bad refactor fails loudly instead of quietly reading the
+  wrong data. `bookshop` and `notebook` are refused too
+- verified against the real foreign namespace names that exist in the account
+  this was developed against, plus near-misses like `bookshop` and
+  `x-book`, in `npm run verify:isolation`
+
+```bash
+$ npm run verify:isolation
+refuses "nue-memory"                    ok
+refuses "thesaintszn@gmail.com"         ok
+refuses "bookshop"                      ok
+refuses "notebook"                       ok
+store refuses "nue-memory" at construction   ok
+the store is constructed in exactly one place  ok
+all checks passed — this app cannot read memory that is not its own
+```
+
+1. `create_account` — the account is owned by **their** address
+2. `add_delegate_key` — **they** register this app's public key, owner-only
+3. The app can act only inside that account
+4. They can `remove_delegate_key` at any time and the app loses access
+   immediately, without our cooperation
+
+Step 4 is the demo. **Revoke us and watch** — remove the key on Sui and the
+writes start failing, because the enforcement is on chain and not in our
+codebase. The app never holds a key capable of creating an account or granting
+itself access to one.
+
+Identity comes from a signed challenge. `ConnectButton` alone is a claim, not a
+proof — anyone can POST any address — so the signature has to check out before a
+session exists.
+
+**Two signature shapes have to be handled**, because a Sui wallet holding a
+zkLogin address does not sign like one holding a normal key:
+
+| What connected | Signature | How it is verified |
+|---|---|---|
+| Normal Sui wallet | ~65 bytes | One offline call that also binds the signature to the address |
+| zkLogin wallet | ~970 bytes — a Groth16 proof round an ephemeral signature | Needs a fullnode, to check the proof is still inside its epoch and the issuer's JWK still matches |
+
+So this is a compatibility shim, not a zkLogin integration: there is no zkLogin
+address derivation, no zkLogin account, no Enoki and no proof generation anywhere
+in this app. The plain path is tried first because it is offline and free, and
+only a signature that genuinely parses as zkLogin is sent to a fullnode, so a
+junk signature never costs a network round trip.
+
+The trade-off is honest and worth stating: **verification is offline for a normal
+wallet and needs one fullnode call for a zkLogin one.** `npm run verify:signin`
+checks both paths, including that the fullnode actually answers with a
+cryptographic verdict rather than a schema error.
+
+The challenge is single-use, so a captured signature cannot be replayed to mint
+sessions, and the client is told which bytes the wallet *actually* signed so a
+wallet that quietly rewrites the message is caught rather than reported as a
+generic verification failure.
+
+---
+
+## Running it
+
+Requires Node 20+. No Vercel account needed for local development: the same Hono
+app runs as a local Node server and as a serverless function.
+
+```bash
+npm install
+cp .env.example .env
+
+npm run keygen        # prints MEMWAL_DELEGATE_KEY — put it in .env
+openssl rand -hex 32  # -> SESSION_SECRET
+# add GROQ_API_KEY from https://console.groq.com
+
+npm run verify         # codec + ranking assertions, no network needed
+npm run dev            # api on :8787, ui on :5173
+```
+
+Then: connect a Sui wallet, sign the challenge, create your Walrus Memory
+account, grant the delegate key. `/api/health` shows exactly what is missing and
+verifies the live deployment.
+
+```bash
+npm run check:registry <accountRegistryId>   # confirm a registry matches the relayer
+```
+
+### Why the deployment is not hardcoded
+
+The published MemWal docs list mainnet package and registry ids that the
+production relayer does not serve
+([MystenLabs/MemWal#1032](https://github.com/MystenLabs/MemWal/issues/1032)).
+Accounts created against them 401 on every write. So `packageId` is read from the
+relayer's `/config` at runtime, and the registry is verified **on chain** by
+checking which package published it — string-comparing a package id against a
+registry id would prove nothing, since they are different values by nature.
+
+---
+
+## Where the edges are
+
+Each of these is a boundary we chose or inherited, stated precisely so you can
+judge the thing on what it actually does.
+
+**The account is yours; the model provider still sees the prompt.** Walrus stores
+decentralized ciphertext and the account is revocable onchain — that part is
+solid. But building a prompt means the server decrypts the memories in it, so
+whatever reaches the LLM is visible to them. That boundary is inherent to hosted
+inference, not a gap in the design, and it is the one part of this that is a
+provider relationship rather than a design decision. Swapping `api/lib/capture.ts`
+onto a local model is the whole fix — the prompt assembly, the ranking and the
+storage are all provider-agnostic already.
+
+**The ledger shows you its own coverage.** MemWal is a vector store with no
+"list all memories" call, so the ledger is assembled by fanning out broad
+queries and unioning the hits — which is a real ceiling that scales with book
+size. Rather than present a partial view as a complete one, the UI shows the
+relayer's own `memory_count` beside the list and says so when the two disagree.
+The number is always checkable against the account.
+
+**Forgetting is verifiable, not yet erasure.** MemWal ships no delete, so forget
+writes a tombstone and reads filter it out — the memory is inert and unreachable
+but the original blob remains on immutable storage. Client-side SEAL
+(`MemWalManual`) makes forgetting real deletion, because destroying the key makes
+every blob permanently undecryptable. It is the first item on the roadmap.
+
+**The most sensitive entries are about people who never agreed to be in the
+book.** No cryptography changes that, and most memory products do not mention
+it. The position here is explicit: store only what a good friend would know,
+never expose the book to anyone, make export and destruction real, and keep raw
+utterances off by default because they are the most sensitive thing we hold. The
+demo cast is fictional for the same reason — a submission you can open must not
+publish real details about real people.
+
+**Sign-in is a self-custodial transaction.** Creating your account and granting
+this app access are both signed by your wallet, so a new user needs a little SUI
+for gas. That friction is the cost of not being able to hold your memory for you.
+Removing it means Google login and gasless transactions, which needs Enoki.
 
 ## What is next
 

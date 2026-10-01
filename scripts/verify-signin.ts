@@ -282,15 +282,39 @@ check("garbage is refused", (await readSession("nonsense")) === null);
 check("an empty token is refused", (await readSession("")) === null);
 check("undefined is refused", (await readSession(undefined)) === null);
 
-// ── 9. The account-mapping store degrades safely ───────────────────────────
+// ── 9. Accounts resolve from the address, with nothing stored ───────────────
 //
-// A missing database must never take the app down, because the session cookie
-// alone is enough for one browser. It reports false instead of throwing.
-section("the account mapping is an improvement, not a dependency");
+// The whole reason a user was asked to paste an account id. MemWalAccount is a
+// shared object, so listOwnedObjects cannot see it -- but the AccountRegistry is
+// a permanent, append-only public Table<address, ID>, so one dynamic-field read
+// answers it on any device. Live, against mainnet.
+section("an account is resolved from the address alone, off the public registry");
 
-const accounts = await import("../api/lib/accounts.ts");
-check("a lookup with no database returns null, not an error", (await accounts.lookupAccountId(address)) === null);
-check("a write with no database returns false, not a throw", (await accounts.recordAccountId(address, SAMPLE_ACCOUNT)) === false);
+const { findAccountId } = await import("../api/lib/account.ts");
+const { deployment } = await import("../api/lib/account.ts");
+
+// Two real owner/account pairs read out of the registry's own dynamic-field list.
+const KNOWN: [string, string][] = [
+  ["0x4a9ac431b20ec2a3d3dbd4cbcaafd3eb0e64267d2085adc0149ca78436f04437", "0x7a7e59fd47072f7cab58b45591e8865c7b4896a9ae92a7e22b093e2bce66f97b"],
+  ["0xad7634535db1cc1a57a7b9f8e19f099507e9fef488ca21d2471482c023ec0a8e", "0xd20ed4bca09454149f7db3bbe6bc2e2cabbba561edd7c50de0bb6b3e0ceda2dc"],
+];
+
+for (const [owner, expected] of KNOWN as [string, string][]) {
+  check(`${owner.slice(0, 10)}… resolves to its account`,
+    (await findAccountId(owner)) === expected, await findAccountId(owner));
+}
+
+// Case-insensitive, because Sui addresses are and users paste them either way.
+check("an uppercase address resolves the same",
+  (await findAccountId(KNOWN[0]![0].toUpperCase().replace("0X", "0x"))) === KNOWN[0]![1]);
+
+// A first-time visitor has no entry. The registry refuses, and that refusal is
+// the normal path -- it must surface as "no account", never as an error.
+check("an address with no account returns null, not an error",
+  (await findAccountId("0x" + "11".repeat(32))) === null);
+
+const { registryId } = await deployment();
+check("the registry being read is a real AccountRegistry", /^0x[0-9a-f]{64}$/.test(registryId), registryId);
 
 console.log("");
 if (failures > 0) {
