@@ -21,6 +21,22 @@ export default defineConfig({
       "/api": {
         target: "http://127.0.0.1:8787",
         changeOrigin: true,
+        // Vite's default answer when the API is not listening is a bare 502,
+        // which looks like the app is broken and says nothing about why. The
+        // common cause is that only the web half is running, so say that.
+        configure: (proxy) => {
+          proxy.on("error", (err, _req, res) => {
+            const message =
+              "The People Book API is not responding on 127.0.0.1:8787. " +
+              `Start it with \`npm run dev\` (both halves) or \`npm run dev:api\` (API only). (${
+                (err as Error)?.message ?? "connection failed"
+              })`;
+            if ("writeHead" in res && !res.headersSent) {
+              res.writeHead(503, { "content-type": "application/json" });
+              res.end(JSON.stringify({ error: "api_unreachable", message }));
+            }
+          });
+        },
       },
     },
   },

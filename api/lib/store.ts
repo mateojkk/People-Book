@@ -78,6 +78,53 @@ const ENUMERATION_CONCURRENCY = 2;
 const ENUMERATION_ATTEMPTS = 3;
 const ENUMERATION_BACKOFF_MS = 1_500;
 
+/**
+ * A ceiling on one enumeration, and a per-recall timeout beneath it.
+ *
+ * Enumeration is eight recalls run two at a time, so its cost is four sequential
+ * rounds. Measured against the live relayer that is 20-35s per request, and
+ * while that holds there is no timeout anywhere in the path: the request hangs
+ * until the dev proxy gives up and answers 502, which reads as "the app is
+ * broken" rather than "the network was slow".
+ *
+ * So the budget is explicit. Past it, whatever came back is returned as partial,
+ * which is already a state this function knows how to report honestly, and the
+ * user gets a short ledger instead of an error page. A single recall that hangs
+ * is bounded too, so one stuck call cannot eat the whole budget.
+ */
+const ENUMERATION_BUDGET_MS = 20_000;
+const RECALL_TIMEOUT_MS = 12_000;
+
+/** Fails a call that outlives its budget, without pretending to cancel it. */
+async function withDeadline<T>(work: Promise<T>, ms: number, what: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${what} timed out after ${ms}ms`)), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/**
+ * A short-lived cache of the enumerated ledger, per account and namespace.
+ *
+ * Long enough that one screen's worth of parallel reads collapses into a single
+ * enumeration, short enough that a write is visible almost immediately. This is
+ * deliberately not a durable cache: the ledger is the user's memory, and the
+ * only thing being avoided is asking the relayer the same question twice in one
+ * render.
+ */
+const ENUMERATION_TTL_MS = 15_000;
+
+type Enumeration = { memories: PersonMemory[]; coverage: "complete" | "partial" };
+const enumerationCache = new Map<string, { at: number; value: Enumeration }>();
+const enumerationsInFlight = new Map<string, Promise<Enumeration>>();
+
 export interface StoreOptions {
   accountId: string;
   namespace?: string;
@@ -182,11 +229,15 @@ export class PeopleBookStore {
     let lastError: unknown;
     for (let attempt = 1; attempt <= ENUMERATION_ATTEMPTS; attempt += 1) {
       try {
-        const result = await this.get().recall({
-          query,
-          limit: RECALL_LIMIT,
-          namespace: this.namespace,
-        });
+        const result = await withDeadline(
+          this.get().recall({
+            query,
+            limit: RECALL_LIMIT,
+            namespace: this.namespace,
+          }),
+          RECALL_TIMEOUT_MS,
+          `recall "${query}"`,
+        );
         return (result.results ?? []).map((hit) => ({ blobId: hit.blob_id, text: hit.text }));
       } catch (error) {
         lastError = error;
@@ -210,11 +261,44 @@ export class PeopleBookStore {
    * error rather than returning an empty book that looks like a fresh account.
    */
   async listLive(): Promise<{ memories: PersonMemory[]; coverage: "complete" | "partial" }> {
+    // One enumeration, shared. The UI asks for the ledger, the nudges and the
+    // people list on the same render, and each of those wants the same eight
+    // recalls. Without this they run concurrently and the relayer sees three
+    // enumerations at once, which is both slower per request and a good way to
+    // get throttled. In-flight dedupe plus a short TTL turns that into one.
+    const key = `${this.accountId}:${this.namespace}`;
+    const running = enumerationsInFlight.get(key);
+    if (running) return running;
+
+    const work = this.enumerate();
+    enumerationsInFlight.set(key, work);
+    try {
+      const fresh = await work;
+      enumerationCache.set(key, { at: Date.now(), value: fresh });
+      return fresh;
+    } finally {
+      enumerationsInFlight.delete(key);
+    }
+  }
+
+  private async enumerate(): Promise<{ memories: PersonMemory[]; coverage: "complete" | "partial" }> {
+    const key = `${this.accountId}:${this.namespace}`;
+    const cached = enumerationCache.get(key);
+    if (cached && Date.now() - cached.at < ENUMERATION_TTL_MS) return cached.value;
+
     const blobs = new Map<string, string>();
     let failed = 0;
     let lastError: unknown;
 
+    const deadline = Date.now() + ENUMERATION_BUDGET_MS;
+
     for (let i = 0; i < ENUMERATION_QUERIES.length; i += ENUMERATION_CONCURRENCY) {
+      // Out of budget: stop here and report what we have. A truncated ledger
+      // that says it is truncated beats a request that never returns.
+      if (Date.now() >= deadline) {
+        failed += ENUMERATION_QUERIES.length - i;
+        break;
+      }
       const batch = ENUMERATION_QUERIES.slice(i, i + ENUMERATION_CONCURRENCY);
       const settled = await Promise.allSettled(batch.map((q) => this.queryWithRetry(q)));
       for (const result of settled) {

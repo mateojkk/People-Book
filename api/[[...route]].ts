@@ -95,6 +95,29 @@ async function resolveStore(c: Context): Promise<
     };
   }
 
+  // A key this app has not been granted cannot read anything, and finding that
+  // out by enumerating costs eight doomed recalls -- measured at 26s against the
+  // live relayer before this check existed. One authenticated probe answers it in
+  // about a second, so a browser that has never granted us access gets told so
+  // immediately instead of after a long silence.
+  //
+  // Only for an account id we resolved just now. A session that already carries
+  // one means the grant succeeded in this browser, and re-probing every request
+  // would add a round trip to every read to re-confirm something the user already
+  // did by signing.
+  if (!session.accountId && !(await delegateIsRegistered(accountId))) {
+    return {
+      error: c.json(
+        {
+          error: "no_grant",
+          message:
+            "People Book does not have access to this Walrus Memory account yet. Grant access to continue — it is one signature, and it can be revoked on chain at any time.",
+        },
+        403,
+      ),
+    };
+  }
+
   return { store: new PeopleBookStore({ accountId, namespace: NAMESPACE }), address: session.address };
 }
 
