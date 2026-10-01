@@ -24,6 +24,7 @@ import {
   markDelegateRegistered,
   verifyAccountShape,
   findAccountId,
+  registryReadable,
   isPlausibleAddress,
   looksLikeRevoked,
   normalize,
@@ -286,6 +287,86 @@ app.get("/api/account/delegate-key", async (c) => {
   } catch (error) {
     return toErrorResponse(c, error);
   }
+});
+
+/**
+ * Records the caller's account in their session, so later requests skip the
+ * registry read.
+ *
+ * The account id is NOT taken from the request. It is read from the registry for
+ * the signed-in address, which means a client cannot talk the server into
+ * pointing its session at somebody else's book: the only account this can ever
+ * resolve is the one the registry already says that address owns.
+ *
+ * This is a cache warm, not a grant. Being able to read the account id is not
+ * the same as being able to read its memories -- that still requires the
+ * onchain delegate key, and a 404-worthy wrong account id simply will not
+ * resolve here.
+ */
+app.post("/api/account/adopt", async (c) => {
+  const session = await readSession(parseCookies(c.req.header("cookie"))[SESSION_COOKIE]);
+  if (!session) return c.json({ error: "not_signed_in" }, 401);
+
+  const accountId = session.accountId ?? (await findAccountId(session.address).catch(() => null));
+  if (!accountId) return c.json({ error: "no_account" }, 404);
+
+  const { createSession } = await import("./lib/session.ts");
+  c.header("Set-Cookie", cookieHeader(SESSION_COOKIE, await createSession(session.address, accountId), 60 * 60 * 24 * 30));
+  return c.json({ ok: true, accountId });
+});
+
+/**
+ * The manual escape hatch: use an account id the registry lookup could not
+ * reach.
+ *
+ * With the registry this should almost never be needed, which is why it is
+ * checked rather than trusted. The id is verified to be a real MemWalAccount,
+ * and then verified to be the account the signed-in address actually owns. The
+ * second check is the one that matters: without it, a user could paste any
+ * account id in the explorer and be handed a session pointing at a stranger's
+ * book.
+ */
+app.post("/api/account/claim", async (c) => {
+  const session = await readSession(parseCookies(c.req.header("cookie"))[SESSION_COOKIE]);
+  if (!session) return c.json({ error: "not_signed_in" }, 401);
+
+  const body = await c.req.json().catch(() => ({}) as { accountId?: string });
+  const raw = String(body?.accountId ?? "").trim();
+  if (!raw) return c.json({ error: "missing_account_id" }, 400);
+
+  // Accepts a bare id or an explorer link, since that is what people copy.
+  const shape = await verifyAccountShape(raw);
+  if (!shape.ok) return c.json({ error: "not_an_account", detail: shape.reason }, 400);
+  const hex = shape.accountId;
+
+  // The ownership check, and the part that actually matters. The registry is
+  // authoritative, so this is decided by what it says about the SIGNED-IN
+  // address -- never by the id in the request.
+  if (!(await registryReadable())) {
+    // Cannot check, so do not claim: fail closed rather than wave it through.
+    return c.json(
+      { error: "registry_unavailable", detail: "Could not reach the Walrus Memory registry to verify ownership. Try again in a moment." },
+      503,
+    );
+  }
+  const owned = await findAccountId(session.address).catch(() => null);
+  if (owned !== hex) {
+    return c.json(
+      {
+        error: "not_your_account",
+        detail: owned
+          ? "That account is registered to a different address than the one you are signed in with."
+          : "The address you are signed in with has no Walrus Memory account on record, so it cannot own that one.",
+      },
+      403,
+    );
+  }
+
+  // A fresh grant is still required, so a previous negative answer must not stick.
+  markDelegateRegistered(hex);
+  const { createSession } = await import("./lib/session.ts");
+  c.header("Set-Cookie", cookieHeader(SESSION_COOKIE, await createSession(session.address, hex), 60 * 60 * 24 * 30));
+  return c.json({ ok: true, accountId: hex });
 });
 
 // ── The book ─────────────────────────────────────────────────────────────────

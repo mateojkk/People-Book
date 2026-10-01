@@ -316,6 +316,65 @@ check("an address with no account returns null, not an error",
 const { registryId } = await deployment();
 check("the registry being read is a real AccountRegistry", /^0x[0-9a-f]{64}$/.test(registryId), registryId);
 
+// ── 10. The account routes exist and check ownership ────────────────────────
+//
+// Two endpoints the setup screen calls were never actually registered, so every
+// setup finished by POSTing into a 404 while a commit message described them as
+// working. A test that exercises the routes by name is the only thing that
+// catches that class of lie.
+section("the account routes the setup screen calls are registered");
+
+const routes = (await import("../api/[[...route]].ts")).default;
+const REAL_OWNER = "0x4a9ac431b20ec2a3d3dbd4cbcaafd3eb0e64267d2085adc0149ca78436f04437";
+const REAL_ACCOUNT = "0x7a7e59fd47072f7cab58b45591e8865c7b4896a9ae92a7e22b093e2bce66f97b";
+
+// A browser sends the cookie the way cookieHeader wrote it, which encodes on top
+// of createSession's own encoding and parseCookies undoes one layer. Sending the
+// bare token instead reproduces a session that silently fails to verify.
+const asBrowser = async (token: string | null, path: string, body?: unknown) => {
+  const res = await routes.request(path, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...(token ? { cookie: `pb_session=${encodeURIComponent(token)}` } : {}),
+    },
+    body: JSON.stringify(body ?? {}),
+  });
+  return { status: res.status, json: (await res.json().catch(() => null)) as { error?: string; accountId?: string } | null };
+};
+
+const ownerToken = await createSession(REAL_OWNER);
+
+const adopted = await asBrowser(ownerToken, "/api/account/adopt");
+check("adopt resolves the account from the registry", adopted.status === 200 && adopted.json?.accountId === REAL_ACCOUNT, adopted.status);
+check("and it is not a 404", adopted.status !== 404);
+
+const adoptedAnon = await asBrowser(null, "/api/account/adopt");
+check("adopt refuses an unauthenticated caller", adoptedAnon.status === 401, adoptedAnon.status);
+
+// The check that matters: an id in the request must never decide whose book this
+// session points at. The registry's answer for the SIGNED-IN address does.
+const strangerToken = await createSession("0x" + "22".repeat(32));
+const stolen = await asBrowser(strangerToken, "/api/account/claim", { accountId: REAL_ACCOUNT });
+check("claiming another address's account is refused", stolen.status === 403, `${stolen.status} ${stolen.json?.error}`);
+check("and the refusal is about ownership, not a server error", stolen.json?.error === "not_your_account", stolen.json?.error);
+
+const ownClaim = await asBrowser(ownerToken, "/api/account/claim", { accountId: REAL_ACCOUNT });
+check("claiming your own account works", ownClaim.status === 200 && ownClaim.json?.accountId === REAL_ACCOUNT, ownClaim.status);
+
+// Users paste explorer links, not bare ids.
+const viaLink = await asBrowser(ownerToken, "/api/account/claim", { accountId: `https://suiscan.xyz/mainnet/object/${REAL_ACCOUNT}` });
+check("an explorer link is accepted", viaLink.status === 200, viaLink.status);
+
+const junkClaim = await asBrowser(ownerToken, "/api/account/claim", { accountId: "nope" });
+check("junk is rejected with a readable reason", junkClaim.status === 400 && !!junkClaim.json?.error, `${junkClaim.status} ${junkClaim.json?.error}`);
+
+const empty = await asBrowser(ownerToken, "/api/account/claim", {});
+check("an empty claim is rejected", empty.status === 400, empty.status);
+
+const noAccount = await asBrowser(await createSession("0x" + "11".repeat(32)), "/api/account/adopt");
+check("adopt reports no account for an address that has none", noAccount.status === 404, noAccount.status);
+
 console.log("");
 if (failures > 0) {
   console.log(`${failures} check(s) FAILED`);

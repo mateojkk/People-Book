@@ -313,6 +313,22 @@ function addressBytes(address: string): Uint8Array {
  */
 const tableIdCache = new Map<string, string | null>();
 
+/**
+ * Whether the registry can be read at all.
+ *
+ * Needed because findAccountId returns null for two very different reasons: the
+ * address has no account, or the chain could not be asked. Those must not be
+ * reported the same way, or "you are not the owner" turns into "try again later".
+ */
+export async function registryReadable(): Promise<boolean> {
+  try {
+    const { registryId } = await deployment();
+    return (await accountsTableId(registryId)) !== null;
+  } catch {
+    return false;
+  }
+}
+
 async function accountsTableId(registryId: string): Promise<string | null> {
   const cached = tableIdCache.get(registryId);
   if (cached !== undefined) return cached;

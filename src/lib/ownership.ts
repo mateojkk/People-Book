@@ -198,11 +198,12 @@ export function useOwnership(onDone: () => void): OwnershipState {
         }
       }
 
-      // Hand the account id to the server so it lands in the session cookie.
-      // Without this a refresh goes back through setup, because the account
-      // cannot be re-resolved from the address.
+      // Ask the server to record this session's account, so later requests skip
+      // the registry read. It resolves the id from the registry itself rather
+      // than trusting ours, and a failure here is not fatal: the registry will
+      // still find the account on the next load.
       rememberClaim(accountId);
-      await api.post("/api/account/adopt", { accountId });
+      await api.post("/api/account/adopt").catch(() => {});
 
       setStep("done");
       onDone();
