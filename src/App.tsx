@@ -301,32 +301,13 @@ export default function App() {
           ))}
         </nav>
 
-        {!sidebarCollapsed && (
-          <>
-            <div className="mt-5 px-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-faint">
-            It knows
-          </p>
-            </div>
-            <StorageNote />
-          </>
-        )}
-
         <div className="mt-auto flex w-full flex-col border-t border-rule">
           {!sidebarCollapsed && (
             <div className="px-4 py-3">
               <p className="mono truncate text-[11px] text-faint">
                 {who.address?.slice(0, 6)}…{who.address?.slice(-4)}
               </p>
-              <div className="mt-1 flex items-center justify-between">
-                <span className="text-[11px] text-faint">Yours, on Sui</span>
-                <a
-                  href="/api/export"
-                  className="text-[11px] text-muted underline decoration-dotted underline-offset-2 hover:text-text"
-                >
-                  export
-                </a>
-              </div>
+              <p className="mt-1 text-[11px] text-faint">Yours, on Sui</p>
             </div>
           )}
 
@@ -364,9 +345,6 @@ export default function App() {
             <Mark />
             <span className="text-[14px] font-semibold">People Book</span>
           </div>
-          <a href="/api/export" className="text-[12px] text-muted">
-            export
-          </a>
         </header>
 
         {modelReady === false && (
@@ -402,52 +380,6 @@ export default function App() {
   );
 }
 
-/**
- * The honest version of a storage meter.
- *
- * Every chat interface has one of these, and most of them are decorative. This one
- * reads the real blob count from the relayer and says "reading…" rather than
- * inventing a number, because the alternative is a lie about the user's own data.
- */
-function StorageNote() {
-  const [count, setCount] = useState<number | null>(null);
-  const [state, setState] = useState<"loading" | "ok" | "unknown">("loading");
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/memories", { credentials: "same-origin" })
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
-      .then((body: { blobCount?: number; count?: number }) => {
-        if (cancelled) return;
-        const value = body.blobCount ?? body.count;
-        if (typeof value === "number") {
-          setCount(value);
-          setState("ok");
-        } else {
-          setState("unknown");
-        }
-      })
-      .catch(() => !cancelled && setState("unknown"));
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  return (
-    <div className="px-4 py-2.5">
-      <p className="text-[11.5px] leading-4 text-muted">
-        {state === "loading" && "Reading your book\u2026"}
-        {state === "ok" && count !== null && (
-          <>
-            <span className="tabular font-medium text-text">{count}</span> encrypted blobs, all
-            yours
-          </>
-        )}
-        {state === "unknown" && "Your book lives in an account you own."}
-      </p>
-    </div>
-  );
-}
 
 function Mark({ className = "h-5 w-5 text-accent" }: { className?: string }) {
   return (
