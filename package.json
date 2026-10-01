@@ -11,13 +11,14 @@
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "keygen": "tsx scripts/generate-delegate-key.ts",
-    "verify": "npm run verify:codec && npm run verify:rank && npm run verify:isolation",
+    "verify": "npm run verify:codec && npm run verify:rank && npm run verify:isolation && npm run verify:chat",
     "verify:codec": "tsx scripts/verify-memory-codec.ts",
     "verify:rank": "tsx scripts/verify-ranking.ts",
     "check:registry": "tsx scripts/check-registry.ts",
     "live:check": "tsx scripts/live-memory-check.ts",
     "verify:isolation": "tsx scripts/verify-isolation.ts",
-    "verify:signin": "tsx --env-file=.env scripts/verify-signin.ts"
+    "verify:signin": "tsx --env-file=.env scripts/verify-signin.ts",
+    "verify:chat": "tsx --env-file=.env scripts/verify-chat.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.7",

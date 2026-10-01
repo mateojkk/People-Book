@@ -375,6 +375,66 @@ check("an empty claim is rejected", empty.status === 400, empty.status);
 const noAccount = await asBrowser(await createSession("0x" + "11".repeat(32)), "/api/account/adopt");
 check("adopt reports no account for an address that has none", noAccount.status === 404, noAccount.status);
 
+// ── 11. The conversation endpoints ──────────────────────────────────────────
+//
+// The chat surface is the product, and it was missing entirely for a while while
+// the extraction underneath it was also silently broken. Both are pinned here.
+section("the conversation endpoints exist and refuse properly");
+
+const chatNoSession = await asBrowser(null, "/api/chat", { message: "hello" });
+check("chat refuses an unauthenticated caller", chatNoSession.status === 401, chatNoSession.status);
+
+const chatEmpty = await asBrowser(ownerToken, "/api/chat", { message: "   " });
+check("chat rejects an empty message", chatEmpty.status === 400, chatEmpty.status);
+
+const chatMissing = await asBrowser(ownerToken, "/api/chat", {});
+check("chat rejects a missing message", chatMissing.status === 400, chatMissing.status);
+
+const undoEmpty = await asBrowser(ownerToken, "/api/chat/undo", {});
+check("undo rejects a missing id", undoEmpty.status === 400, undoEmpty.status);
+
+// This address owns an account but has never granted us access, so the request
+// is refused before it can reach the store. What matters is that it is a clean
+// client error rather than a 500.
+const undoUnknown = await asBrowser(ownerToken, "/api/chat/undo", { id: "0x" + "ab".repeat(32) });
+check("undo is refused cleanly, not a crash", undoUnknown.status === 403, undoUnknown.status);
+
+// The regression that mattered most, and it was invisible for a long time: with an
+// empty ledger the allowed-person set was {"you"}, so every candidate about anyone
+// new was discarded. People Book could only learn people it already knew.
+const { capture } = await import("../api/lib/capture.ts");
+const LINE = "Ravi's daughter is called Nila.";
+const extraction = await capture(LINE, []);
+check(
+  "a person mentioned for the first time is extracted at all",
+  extraction.candidates.length > 0,
+  extraction.candidates,
+);
+check(
+  "and it is someone named in that message, not a carried-over book",
+  extraction.candidates.length > 0 &&
+    extraction.candidates.every((c) => LINE.toLowerCase().includes(c.person.toLowerCase())),
+  extraction.candidates.map((c) => c.person),
+);
+
+// Deliberately not asserting a specific person: the model returned both Ravi and
+// Nila on one call and only Nila on the next, at temperature 0. Asserting "Ravi"
+// would make this suite flaky for a reason that has nothing to do with the bug it
+// guards. What is being guarded is that a new name is not silently discarded.
+
+// …while an invented person is still refused, which was the point of the filter.
+// The rule is that a recorded person must be named in the message or already in
+// the book. Nila counts: she is named, and she is a person in this user's life.
+const said = "Ravi's daughter is called Nila.";
+const invented = await capture(said, ["Someone Else"]);
+check(
+  "only people named in the message or already known are recorded",
+  invented.candidates.every(
+    (c) => ["you", "someone else"].includes(c.person.toLowerCase()) || said.toLowerCase().includes(c.person.toLowerCase()),
+  ),
+  invented.candidates.map((c) => c.person),
+);
+
 console.log("");
 if (failures > 0) {
   console.log(`${failures} check(s) FAILED`);

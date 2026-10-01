@@ -12,10 +12,11 @@ import { api } from "./lib/api.ts";
 import { NudgeView } from "./components/NudgeView.tsx";
 import { LedgerView } from "./components/LedgerView.tsx";
 import { AddView } from "./components/AddView.tsx";
+import { ChatView } from "./components/ChatView.tsx";
 import { ErrorNote } from "./components/bits.tsx";
 import type { PersonMemory } from "./types.ts";
 
-type Tab = "nudges" | "book" | "add";
+type Tab = "talk" | "nudges" | "book" | "add";
 
 interface Whoami {
   signedIn: boolean;
@@ -28,7 +29,7 @@ interface Whoami {
 
 export default function App() {
   const { account, state, signIn } = useSignIn();
-  const [tab, setTab] = useState<Tab>("nudges");
+  const [tab, setTab] = useState<Tab>("talk");
   const [who, setWho] = useState<Whoami | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
@@ -250,6 +251,7 @@ export default function App() {
       <nav className="mb-5 flex gap-1 border-b border-line">
         {(
           [
+            ["talk", "Talk"],
             ["nudges", "What came to you"],
             ["book", "Your book"],
             ["add", "Add"],
@@ -269,6 +271,10 @@ export default function App() {
         ))}
       </nav>
 
+      {/* The conversation is the product, so it is the default and sits first.
+          The other tabs are the same data seen from a different angle: what it
+          decided to tell you, and what it holds. */}
+      {tab === "talk" && <div className="-mx-4 -my-6 h-[calc(100vh-12rem)]"><ChatView /></div>}
       {tab === "nudges" && <NudgeView key={version} onForget={forget} />}
       {tab === "book" && <LedgerView key={version} onForget={forget} />}
       {tab === "add" && <AddView onSaved={() => setVersion((v) => v + 1)} />}

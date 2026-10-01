@@ -122,11 +122,27 @@ export async function capture(
     return { candidates: [], error: "GROQ_API_KEY is not set, so nothing was extracted. Nothing was written." };
   }
 
+  // Who is allowed to end up with a memory.
+  //
+  // This used to be "someone already in the book, or you". That reads like a
+  // safety check but it forbids the most important case in the product: the first
+  // time a person is mentioned. With an empty ledger the allowed set was just
+  // {"you"}, so every candidate about anyone new was discarded, and People Book
+  // could only ever learn people it already knew. It failed silently, which is why
+  // a manual add form was masking it.
+  //
+  // The rule the model is actually given is the right one, so it is enforced here
+  // instead: the person must be someone already in the book, or someone the user
+  // just named. That still blocks an invented person, and lets a new one in.
   const allowed = new Set<string>([...knownPeople.map((p) => p.toLowerCase()), "you"]);
+  const said = message.toLowerCase();
 
   try {
     const raw = await extractRaw(message, knownPeople);
-    const candidates = normalise(raw).filter((c) => allowed.has(c.person.toLowerCase()));
+    const candidates = normalise(raw).filter((c) => {
+      const person = c.person.toLowerCase();
+      return allowed.has(person) || said.includes(person);
+    });
     return { candidates };
   } catch (error) {
     return {

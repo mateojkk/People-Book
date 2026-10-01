@@ -16,6 +16,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { computeNudges, elisionLine } from "./lib/ranking.ts";
 import { capture, phraseNudges } from "./lib/capture.ts";
+import { takeTurn } from "./lib/chat.ts";
 import { PeopleBookStore, MemoryNotFoundError } from "./lib/store.ts";
 import { isConfigError, isWriteError, NAMESPACE, RECALL_LIMIT } from "./lib/memwal.ts";
 import {
@@ -470,6 +471,55 @@ app.post("/api/nudges/dismiss", async (c) => {
 });
 
 /** Extracts candidate memories from a message. Nothing is written. */
+/**
+ * One turn of conversation: say something, have it remembered, get an answer.
+ *
+ * This is the app. Everything else in here exists to serve it.
+ */
+app.post("/api/chat", async (c) => {
+  const resolved = await resolveStore(c);
+  if ("error" in resolved) return resolved.error;
+
+  const body = (await c.req.json().catch(() => ({}))) as { message?: unknown; undoOf?: unknown };
+  if (typeof body.message !== "string" || !body.message.trim()) {
+    return c.json({ error: "bad_request", message: "message is required." }, 400);
+  }
+  const undoOf = Array.isArray(body.undoOf) ? body.undoOf.filter((v): v is string => typeof v === "string") : [];
+
+  try {
+    return c.json(await takeTurn({ store: resolved.store, message: body.message.trim(), undoOf }));
+  } catch (error) {
+    return toErrorResponse(c, error);
+  }
+});
+
+/**
+ * Undoes a memory this conversation saved.
+ *
+ * A tombstone, so it collapses in the ledger like any other revision rather than
+ * leaving a hole. This is what makes silent saving defensible: the user never had
+ * to confirm anything, and correcting it is one tap.
+ */
+app.post("/api/chat/undo", async (c) => {
+  const resolved = await resolveStore(c);
+  if ("error" in resolved) return resolved.error;
+
+  const body = (await c.req.json().catch(() => ({}))) as { id?: unknown };
+  if (typeof body.id !== "string" || !body.id.trim()) {
+    return c.json({ error: "bad_request", message: "id is required." }, 400);
+  }
+
+  try {
+    const forgotten = await resolved.store.forget(body.id.trim());
+    return c.json({ ok: true, id: forgotten.id });
+  } catch (error) {
+    if (error instanceof MemoryNotFoundError) {
+      return c.json({ error: "not_found", message: "That memory is already gone." }, 404);
+    }
+    return toErrorResponse(c, error);
+  }
+});
+
 app.post("/api/capture", async (c) => {
   const resolved = await resolveStore(c);
   if ("error" in resolved) return resolved.error;
