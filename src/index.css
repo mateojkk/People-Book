@@ -18,38 +18,50 @@
    theme-neutral: `base` is the page, `panel` a raised surface, `text` the ink.
    ──────────────────────────────────────────────────────────────────────────── */
 @theme {
-  /* ── Grey-black, with one light blue ──────────────────────────────────────
-     Near-black with a blue cast rather than pure #000, because pure black on a
-     dark UI looks like a hole and makes text sit on top of it. The panels step up
-     in small, even increments so depth comes from layering rather than shadow.
-     One accent only: a light blue, used for what is live and for focus. */
-  --color-base: #0e1116;
-  --color-panel: #151920;
-  --color-raised: #1d232c;
+  /* ── Graphite ────────────────────────────────────────────────────────────
+     Named after the material, and taken seriously: a neutral dark grey with a
+     cool cast, built by layering greys rather than by tinting one hue. There is no
+     "warm" and no "blue-black" here -- one family of greys from #17181a up, so
+     depth reads as material rather than as lighting.
 
-  /* Rules are barely there. On a dark UI a strong border looks like scaffolding. */
-  --color-rule: #242b35;
-  --color-rule-soft: #1b212a;
+     One accent, light blue, reserved for what is live and for focus. Two accents
+     would mean neither one means anything. */
+  --color-base: #17181a;
+  --color-panel: #1e2023;
+  --color-raised: #272a2e;
 
-  /* Text is off-white, never #fff: full white on near-black is harsh at length. */
-  --color-text: #e7ecf3;
-  --color-muted: #8d97a5;
-  --color-faint: #5f6a79;
+  /* Rules are barely there. A strong border on a dark surface reads as scaffolding. */
+  --color-rule: #303338;
+  --color-rule-soft: #24262a;
 
-  /* Light blue. The only chromatic colour in the interface. */
+  /* Off-white rather than pure white: full white on graphite is harsh at length. */
+  --color-text: #e3e5e8;
+  --color-muted: #969ca5;
+  --color-faint: #6d737c;
+
   --color-accent: #7cc0f5;
-  --color-accent-dim: #4a8fc4;
+  --color-accent-dim: #4b8fc2;
 
-  --color-warn: #e0b062;
-  --color-stop: #e88b82;
+  --color-warn: #dfae61;
+  --color-stop: #e68a81;
 
-  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  /* ── Mono, everywhere ─────────────────────────────────────────────────────
+     One typeface for prose, labels, numbers and code. Not a novelty: the whole
+     app is a ledger, and a ledger is set in one face so a figure, a name and a
+     sentence are visibly the same kind of object. Tabular figures are not
+     optional here -- a date and a blob count sitting in a column must line up. */
+  --font-sans: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* 768px is where ChatGPT and Claude sit. Past that, line length stops being
+     readable. Mono is wider per character than a proportional face, so the
+     measure is slightly tighter than a sans would want. */
+  --container-thread: 44rem;
 }
 
-@import "@fontsource/inter/400.css";
-@import "@fontsource/inter/500.css";
-@import "@fontsource/inter/600.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+@import "@fontsource/jetbrains-mono/700.css";
 
 html,
 body,
@@ -61,18 +73,19 @@ body {
   background-color: var(--color-base);
   color: var(--color-text);
   font-family: var(--font-sans);
-  /* Inter's default tracking is a little loose at small sizes. */
-  letter-spacing: -0.011em;
+  /* Mono needs negative tracking or long lines look gappy and the measure has to
+     shrink to compensate. This is the one adjustment the face actually wants. */
+  letter-spacing: -0.02em;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
 }
 
-/* Inter has no true italics in the set we ship, and a synthesised oblique on a
-   note this small looks like a rendering fault rather than an emphasis. */
+/* No true italic in the shipped set, and a synthesised oblique at 13px looks like
+   a rendering fault rather than an emphasis. Weight carries it instead. */
 em {
   font-style: normal;
-  font-weight: 500;
+  font-weight: 700;
 }
 
 /* ── The measure ─────────────────────────────────────────────────────────────

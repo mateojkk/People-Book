@@ -19,10 +19,11 @@
     "verify:isolation": "tsx scripts/verify-isolation.ts",
     "verify:signin": "tsx --env-file=.env scripts/verify-signin.ts",
     "verify:chat": "tsx --env-file=.env scripts/verify-chat.ts",
-    "verify:ui": "node scripts/verify-ui.mjs"
+    "verify:ui": "node scripts/verify-ui.mjs",
+    "shots": "node scripts/shots.mjs"
   },
   "dependencies": {
-    "@fontsource/inter": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
     "@hono/node-server": "^1.19.7",
     "@mysten-incubation/memwal": "^0.1.8",
     "@mysten/dapp-kit-react": "^2.1.37",

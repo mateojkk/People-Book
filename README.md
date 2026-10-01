@@ -481,6 +481,27 @@ this app access are both signed by your wallet, so a new user needs a little SUI
 for gas. That friction is the cost of not being able to hold your memory for you.
 Removing it means Google login and gasless transactions, which needs Enoki.
 
+## Routes
+
+Three screens, three paths. No router dependency for three paths.
+
+| Path | What it is |
+| --- | --- |
+| `/` | The landing page. What the thing is, in three lines, and one action. |
+| `/signin` | Signing in, and setting the account up. Split from the landing page because this is where someone signs something and grants something, and is entitled to be told what before they do. |
+| `/app` | The conversation, with the rail. Reachable only with a session *and* a granted account. |
+
+`/app` without those lands on `/signin` rather than on a shell where every write
+fails as unauthorized.
+
+## Interface
+
+Graphite, one light blue accent, and a single monospaced face for everything —
+prose, labels, figures, code. Not a novelty: the app is a ledger, and a ledger set
+in one face makes a date, a name and a sentence visibly the same kind of object.
+
+Run `npm run shots` to capture all three screens to `/tmp/shots` after a change.
+
 ## Rules
 
 `RULES.md` records the rules this project broke and the reasons for them — chiefly that

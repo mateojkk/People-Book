@@ -75,12 +75,41 @@ await page.route("**/api/chat", (r) =>
 // ── The empty state ─────────────────────────────────────────────────────────
 section("the empty state is the input and nothing else");
 
-await page.goto(BASE, { waitUntil: "networkidle" });
-await page.waitForTimeout(700);
+// The three routes, because they are three screens and only one of them had ever
+// been looked at. Signed out, so / is the landing page rather than a redirect.
+const anon = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+await anon.route("**/api/auth/whoami", (r) => r.fulfill({ json: { signedIn: false } }));
+await anon.route("**/api/health", (r) => r.fulfill({ json: { ok: true, config: { groq: true } } }));
+await anon.goto(BASE + "/", { waitUntil: "networkidle" });
+await anon.waitForTimeout(600);
+const landing = await anon.evaluate(() => document.body.innerText);
+check("the landing page says what the thing is", /remembers the people/i.test(landing), JSON.stringify(landing.slice(0, 100)));
+check("and offers one action", /sign in with a sui wallet/i.test(landing));
+const fold = await anon.evaluate(() => {
+  const h1 = document.querySelector("h1")?.innerText ?? "";
+  const first = document.querySelector("h1")?.nextElementSibling?.innerText ?? "";
+  return `${h1} ${first}`;
+});
+check("with no jargon in the claim itself", !/delegate key|namespace|relayer|walrus/i.test(fold), fold.slice(0, 120));
+
+// Padding was the first thing wrong with it: mono is a wide face, so the measure
+// and the vertical rhythm both have to come in, or every screen reads as a poster
+// with one sentence on it.
+const landingBox = await anon.evaluate(() => {
+  const main = document.querySelector("main");
+  const cs = getComputedStyle(main);
+  return { width: main.getBoundingClientRect().width, padTop: parseFloat(cs.paddingTop), padBottom: parseFloat(cs.paddingBottom) };
+});
+check("the landing column is not wider than the text needs", landingBox.width <= 640, `${landingBox.width}px`);
+check("and is not floating in a tall empty page", landingBox.padTop <= 56, `${landingBox.padTop}px`);
+await anon.close();
 
 // Scoped to the conversation column. The whole body includes the rail, where
 // "People Book" is the brand and legitimately present -- asserting on that is
 // asserting on the sidebar.
+await page.goto(BASE + "/", { waitUntil: "networkidle" });
+await page.waitForTimeout(500);
+
 const emptyText = await page.evaluate(() => {
   const main = document.querySelector("main");
   return (main?.innerText ?? "").trim();
