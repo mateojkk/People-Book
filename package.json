@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "keygen": "tsx scripts/generate-delegate-key.ts",
-    "verify": "npm run verify:codec && npm run verify:rank && npm run verify:isolation && npm run verify:chat",
+    "verify": "npm run verify:codec && npm run verify:rank && npm run verify:isolation && npm run verify:tasks && npm run verify:chat",
     "verify:codec": "tsx scripts/verify-memory-codec.ts",
     "verify:rank": "tsx scripts/verify-ranking.ts",
     "check:registry": "tsx scripts/check-registry.ts",
@@ -20,7 +20,8 @@
     "verify:signin": "tsx --env-file=.env scripts/verify-signin.ts",
     "verify:chat": "tsx --env-file=.env scripts/verify-chat.ts",
     "verify:ui": "node scripts/verify-ui.mjs",
-    "shots": "node scripts/shots.mjs"
+    "shots": "node scripts/shots.mjs",
+    "verify:tasks": "tsx scripts/verify-tasks.ts"
   },
   "dependencies": {
     "@fontsource/jetbrains-mono": "^5.3.0",

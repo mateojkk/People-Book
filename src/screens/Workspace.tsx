@@ -1,8 +1,50 @@
-type Tab = "talk" | "nudges" | "book" | "add";
+type Tab = "talk" | "today" | "book" | "add";
 
-import { useState } from "react";
+/**
+ * The notification.
+ *
+ * It reaches you rather than waiting to be found, which is the whole difference
+ * between a reminder and a database. Deliberately a count and not a list: a
+ * banner carrying four tasks is a list nobody reads, and a badge of fourteen
+ * teaches people to ignore badges.
+ */
+function Notice({ onOpen }: { onOpen: () => void }) {
+  const [notice, setNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/today", { credentials: "same-origin" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body: { notice?: string } | null) => {
+        if (!cancelled && body?.notice) setNotice(body.notice);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Nothing to say is the normal state, and it should say nothing at all.
+  if (!notice) return null;
+
+  return (
+    <button
+      onClick={onOpen}
+      className="group flex w-full shrink-0 items-center gap-3 border-b border-rule bg-raised px-5 py-2.5 text-left transition-colors hover:bg-panel"
+    >
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
+      <p className="flex-1 text-[12.5px] leading-5 text-text">{notice}</p>
+      <span className="shrink-0 text-[11.5px] text-faint transition-colors group-hover:text-muted">
+        Open
+      </span>
+    </button>
+  );
+}
+
+import { useEffect, useState } from "react";
 import { ChatView } from "../components/ChatView.tsx";
 import { NudgeView } from "../components/NudgeView.tsx";
+import { TodayView } from "../components/TodayView.tsx";
 import { LedgerView } from "../components/LedgerView.tsx";
 import { AddView } from "../components/AddView.tsx";
 import { ErrorNote } from "../components/bits.tsx";
@@ -65,7 +107,6 @@ export function Workspace({
           {(
             [
               ["talk", "Talk to it"],
-              ["nudges", "What came to you"],
               ["book", "Your book"],
               ["add", "Write one in"],
             ] as const
@@ -133,6 +174,7 @@ export function Workspace({
           </div>
         </header>
 
+        {tab === "talk" && <Notice onOpen={() => setTab("today")} />}
         {modelReady === false && (
           <div className="border-b border-rule bg-warn/10 px-5 py-2.5">
             <p className="text-[13px] leading-5 text-warn">
@@ -153,7 +195,7 @@ export function Workspace({
           {tab !== "talk" && (
             <div className="h-full overflow-y-auto px-5 py-8">
               <div className="mx-auto w-full max-w-thread">
-                {tab === "nudges" && <NudgeView key={version} onForget={onForget} />}
+                {tab === "today" && <TodayView key={version} onForget={onForget} />}
                 {tab === "book" && <LedgerView key={version} onForget={onForget} />}
                 {tab === "add" && <AddView onSaved={onSaved} />}
               </div>
@@ -176,11 +218,12 @@ function SidebarToggleIcon({ className = "h-4 w-4" }: { className?: string }) {
   );
 }
 
+
 function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, string> = {
     new: "M8 3.5v9M3.5 8h9",
     talk: "M3 5.5A1.5 1.5 0 0 1 4.5 4h7A1.5 1.5 0 0 1 13 5.5v4a1.5 1.5 0 0 1-1.5 1.5H7l-3 2.5v-2.5h-.5A1.5 1.5 0 0 1 3 9.5v-4Z",
-    nudges: "M8 2v3M8 11v3M2 8h3M11 8h3M4.2 4.2l2.1 2.1M9.7 9.7l2.1 2.1M11.8 4.2l-2.1 2.1M6.3 9.7l-2.1 2.1",
+    today: "M8 2v3M8 11v3M2 8h3M11 8h3M4.2 4.2l2.1 2.1M9.7 9.7l2.1 2.1M11.8 4.2l-2.1 2.1M6.3 9.7l-2.1 2.1",
     book: "M3 3.5h10v9H3v-9Zm0 2.5h10M6 9h4",
     add: "M8 3.5v9M3.5 8h9",
   };
@@ -197,4 +240,4 @@ function Icon({ name }: { name: IconName }) {
   );
 }
 
-type IconName = "talk" | "nudges" | "book" | "add" | "new";
+type IconName = Tab | "new";

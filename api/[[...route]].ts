@@ -17,6 +17,7 @@ import type { Context } from "hono";
 import { computeNudges, elisionLine } from "./lib/ranking.ts";
 import { capture, phraseNudges } from "./lib/capture.ts";
 import { takeTurn } from "./lib/chat.ts";
+import { tasksFor, composeNotice } from "./lib/tasks.ts";
 import { PeopleBookStore, MemoryNotFoundError } from "./lib/store.ts";
 import { isConfigError, isWriteError, NAMESPACE, RECALL_LIMIT } from "./lib/memwal.ts";
 import {
@@ -422,6 +423,83 @@ app.get("/api/memories", async (c) => {
  * the honest baseline: every nudge is a recall, so with memory off there is
  * nothing. That contrast is the before/after the submission is judged on.
  */
+/**
+ * What to do today.
+ *
+ * The screen that answers "why did I open this". Assembled from the ledger rather
+ * than stored separately, so it cannot drift from the book, and filtered through
+ * decay so nothing faded is presented as urgent.
+ */
+app.get("/api/today", async (c) => {
+  const resolved = await resolveStore(c);
+  if ("error" in resolved) return resolved.error;
+  try {
+    const { memories, coverage } = await resolved.store.listLive();
+    const tasks = tasksFor(memories, new Date());
+    const dueToday = tasks.filter((t) => t.active && (t.urgency === "overdue" || t.urgency === "today"));
+    return c.json({
+      tasks,
+      // A sentence, not a count. "2 things need you today" is a task list with a
+      // bell on it; the sentence is this app being useful in its own voice.
+      notice: composeNotice(memories, tasks, new Date()),
+      dueCount: dueToday.length,
+      staleCount: tasks.filter((t) => !t.active).length,
+      coverage,
+    });
+  } catch (error) {
+    return toErrorResponse(c, error);
+  }
+});
+
+/**
+ * Marks a task done -- or undoes that.
+ *
+ * Written as a new revision rather than an edit, so the promise that existed
+ * before is still in the book. That is the difference between "you changed your
+ * mind" and "this never happened", and it is the same reason forgetting writes a
+ * tombstone.
+ *
+ * Settling and reopening are the same route with an explicit verb rather than a
+ * toggle, so a double-tap cannot settle something and then immediately reopen it.
+ */
+app.post("/api/tasks/:id/:action", async (c) => {
+  const resolved = await resolveStore(c);
+  if ("error" in resolved) return resolved.error;
+
+  const action = c.req.param("action");
+  if (action !== "settle" && action !== "reopen") {
+    return c.json({ error: "bad_request", message: "action must be settle or reopen." }, 400);
+  }
+
+  try {
+    const memory = await resolved.store.getById(c.req.param("id"));
+    if (!memory) return c.json({ error: "not_found", message: "That is not in your book." }, 404);
+    if (memory.type !== "promise") {
+      return c.json({ error: "not_a_task", message: "Only promises can be settled." }, 400);
+    }
+
+    // Settling something already settled is a no-op rather than an error, because
+    // the honest answer to "is this done?" when it is already done is yes.
+    if (action === "settle" && (memory.status === "kept" || memory.status === "settled")) {
+      return c.json({ ok: true, memory });
+    }
+    if (action === "reopen" && memory.status === "open") {
+      return c.json({ ok: true, memory });
+    }
+
+    // Reopening puts it back to open, which is what the ranker surfaces. Kept is
+    // reserved for the user saying so directly, so a settled task that comes back
+    // is genuinely outstanding again rather than silently kept.
+    const next = await resolved.store.revise(
+      memory,
+      action === "settle" ? { status: "settled" } : { status: "open" },
+    );
+    return c.json({ ok: true, memory: next });
+  } catch (error) {
+    return toErrorResponse(c, error);
+  }
+});
+
 app.get("/api/nudges", async (c) => {
   const resolved = await resolveStore(c);
   if ("error" in resolved) return resolved.error;

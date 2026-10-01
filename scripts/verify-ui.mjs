@@ -72,6 +72,24 @@ await page.route("**/api/chat", (r) =>
       .join(""),
   }));
 
+await page.route("**/api/memories", (r) =>
+  r.fulfill({ json: { memories: [], coverage: "complete", blobCount: 0, truncated: false } }));
+await page.route("**/api/nudges", (r) => r.fulfill({ json: { nudges: [], elisions: [], basis: {} } }));
+await page.route("**/api/tasks/*/*", (r) => r.fulfill({ json: { ok: true } }));
+await page.route("**/api/today", (r) =>
+  r.fulfill({
+    json: {
+      notice: "Maya\u2019s birthday is on the 14th \u2014 tomorrow. Also, Dev: send the signed contract \u2014 2 days late.",
+      dueCount: 2,
+      staleCount: 1,
+      coverage: "complete",
+      tasks: [
+        { memoryId: "t1", person: "Dev", text: "Send Dev the signed contract.", dueAt: "2026-09-29", urgency: "overdue", urgencyScore: 0.95, daysLate: 2, active: true, dueLabel: "2 days late" },
+        { memoryId: "t2", person: "Maya", text: "Buy Maya a gift.", dueAt: "2026-10-01", urgency: "today", urgencyScore: 0.92, daysLate: 0, active: true, dueLabel: "today" },
+      ],
+    },
+  }));
+
 // ── The empty state ─────────────────────────────────────────────────────────
 section("the empty state is the input and nothing else");
 
@@ -185,6 +203,39 @@ await page.waitForTimeout(400);
 const narrowOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
 check("no horizontal overflow at 390px", !narrowOverflow);
 await page.setViewportSize({ width: 1280, height: 900 });
+
+// ── Today, and the notification that reaches you ────────────────────────────
+section("today is a list you can finish");
+
+await page.goto(BASE + "/app", { waitUntil: "networkidle" });
+await page.waitForTimeout(600);
+const shell = await page.evaluate(() => document.body.innerText);
+// A sentence, not a count. "2 things need you today" is a reminders app.
+check("something is said to you on arrival, in a sentence", /birthday is on the 14th . tomorrow/i.test(shell), JSON.stringify(shell.slice(0, 160)));
+check("no task count badge anywhere", !/\d+ things need/i.test(shell));
+check("and Today is not a peer tab in the rail", !/^Today$/m.test(shell));
+
+// It is reached through the notice.
+await page.getByRole("button", { name: /Open/ }).click();
+await page.waitForTimeout(600);
+const today = await page.evaluate(() => document.body.innerText);
+check("the list is headed Today", /Today/.test(today));
+check("an overdue item says how late", /2 days late/.test(today), today.slice(0, 160));
+check("and an item due today says so", /\btoday\b/i.test(today));
+check("each row can be finished", await page.getByRole("button", { name: "Done" }).count() >= 2);
+check("and you can get back to the conversation", /Back to talking/.test(today));
+// The one that made this an activity tracker.
+check("nothing scores the user", !/you said you would do|let pass|% of/i.test(today));
+await page.screenshot({ path: "/tmp/shots/20-today.png" });
+
+// Pressing Done must actually call the settle route.
+const settleCalls = [];
+page.on("request", (r) => {
+  if (r.url().includes("/api/tasks/")) settleCalls.push(r.url().split("/api/")[1]);
+});
+await page.getByRole("button", { name: "Done" }).first().click();
+await page.waitForTimeout(700);
+check("Done writes a revision rather than deleting", settleCalls.some((u) => u.includes("/settle")), settleCalls.join(","));
 
 check("no uncaught page errors", pageErrors.length === 0, pageErrors.slice(0, 2).join(" | "));
 
