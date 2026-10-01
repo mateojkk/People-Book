@@ -64,6 +64,19 @@ function asString(v: unknown): string | undefined {
   return typeof v === "string" && v.trim() ? v.trim() : undefined;
 }
 
+/**
+ * Words that can stand in for a person but are not one.
+ *
+ * "you" is deliberately absent: the user is a real subject in this book, and every
+ * message is addressed to them.
+ */
+const PRONOUNS: ReadonlySet<string> = new Set([
+  "she", "he", "they", "it", "we", "i", "me", "my", "mine", "myself",
+  "her", "hers", "herself", "him", "his", "himself", "theirs", "them",
+  "their", "themselves", "itself", "our", "ours", "ourselves", "your", "yours",
+  "yourself", "this", "that", "there", "someone", "somebody", "anyone",
+]);
+
 const VALID_TYPES: readonly MemoryType[] = ["trait", "event", "promise", "taboo", "howto", "update"];
 
 /**
@@ -159,7 +172,14 @@ export async function capture(
   try {
     const raw = await extractRaw(message, knownPeople, history);
     const candidates = normalise(raw).filter((c) => {
-      const person = c.person.toLowerCase();
+      const person = c.person.toLowerCase().trim();
+      // A pronoun is not a person. Observed from the live model on a follow-up
+      // like "and she's allergic to shellfish", which it happily filed under a
+      // person called "she" -- and the name-in-the-message rule below would wave it
+      // through, because "she" really is in the message. That writes a memory
+      // attributed to a non-person, which is exactly the kind of junk the book
+      // cannot afford.
+      if (PRONOUNS.has(person) && person !== "you") return false;
       return allowed.has(person) || said.includes(person);
     });
     return { candidates };

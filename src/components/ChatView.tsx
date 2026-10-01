@@ -16,6 +16,8 @@ export interface Turn {
   captureError?: string;
   undone?: string[];
   pending?: boolean;
+  /** What the server is doing right now, so a pause is never unexplained. */
+  status?: string;
   failed?: string;
 }
 
@@ -52,8 +54,7 @@ export function ChatView() {
       setBusy(true);
 
       try {
-        const res = await api.post<Omit<Turn, "id" | "role">>("/api/chat", { message, undoOf, history });
-        setTurns((prev) => prev.map((t) => (t.id === theirs.id ? { ...t, ...res, pending: false } : t)));
+        await streamTurn(theirs.id, { message, undoOf, history }, setTurns);
       } catch (error) {
         const detail = await apiErrorDetail(error);
         setTurns((prev) => prev.map((t) => (t.id === theirs.id ? { ...t, pending: false, failed: detail } : t)));
@@ -128,7 +129,7 @@ export function ChatView() {
               <button
                 onClick={() => void send()}
                 disabled={busy || !draft.trim()}
-                aria-label="Send"
+                aria-label={busy ? "Working" : "Send"}
                 className="grid h-8 w-8 place-items-center rounded-full bg-bright text-ink transition-opacity disabled:opacity-25"
               >
                 <Arrow />
@@ -142,6 +143,73 @@ export function ChatView() {
       </div>
     </div>
   );
+}
+
+/**
+ * Sends a turn and renders it as it arrives.
+ *
+ * A plain POST-and-wait was the last thing that made this feel like a form: the
+ * ledger read can take seconds, so the whole reply appeared at once after a
+ * silence. Reading the event stream means the wait is explained and then the words
+ * show up at reading speed.
+ */
+async function streamTurn(
+  turnId: string,
+  payload: { message: string; undoOf: string[]; history: { role: "you" | "assistant"; text: string }[] },
+  setTurns: React.Dispatch<React.SetStateAction<Turn[]>>,
+): Promise<void> {
+  const response = await fetch("/api/chat", {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "text/event-stream" },
+    credentials: "same-origin",
+    body: JSON.stringify(payload),
+  });
+
+  // A refusal before the stream opens is still a JSON body, so read it properly
+  // rather than trying to parse an error message as events.
+  if (!response.ok || !response.body) {
+    const detail = (await response.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(detail?.message ?? `Request failed with ${response.status}`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    let split: number;
+    while ((split = buffer.indexOf("\n\n")) !== -1) {
+      const frame = buffer.slice(0, split).trim();
+      buffer = buffer.slice(split + 2);
+      if (!frame.startsWith("data:")) continue;
+
+      let event: Record<string, unknown>;
+      try {
+        event = JSON.parse(frame.slice(5).trim());
+      } catch {
+        continue;
+      }
+
+      if (event.type === "status") {
+        setTurns((prev) =>
+          prev.map((t) => (t.id === turnId ? { ...t, status: String(event.detail ?? "") } : t)),
+        );
+      } else if (event.type === "delta") {
+        setTurns((prev) =>
+          prev.map((t) => (t.id === turnId ? { ...t, text: t.text + String(event.text ?? "") } : t)),
+        );
+      } else if (event.type === "done") {
+        const { type: _type, ...rest } = event as { type: string } & Partial<Turn>;
+        setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, ...rest, pending: false } : t)));
+      } else if (event.type === "error") {
+        throw new Error(String(event.message ?? event.error ?? "Something went wrong"));
+      }
+    }
+  }
 }
 
 function TurnBlock({ turn, onUndo }: { turn: Turn; onUndo: (turnId: string, memoryId: string) => void }) {
@@ -159,7 +227,15 @@ function TurnBlock({ turn, onUndo }: { turn: Turn; onUndo: (turnId: string, memo
     <div className="attention space-y-3">
       <div className="max-w-[46rem] text-[15px] leading-7 text-bright">
         {turn.pending ? (
-          <Typing />
+          turn.text ? (
+            // Words are arriving: show them, with a caret, and no spinner competing.
+            <p className="whitespace-pre-wrap">
+              {turn.text}
+              <span className="ml-0.5 inline-block h-[1.05em] w-[2px] translate-y-[0.18em] animate-pulse bg-faint" />
+            </p>
+          ) : (
+            <Typing label={turn.status} />
+          )
         ) : turn.failed ? (
           <p className="text-quiet">{turn.failed}</p>
         ) : (
@@ -235,18 +311,25 @@ function Opening() {
   );
 }
 
-function Typing() {
+function Typing({ label }: { label?: string }) {
   return (
-    <span className="inline-flex gap-1.5 py-2">
-      {[0, 1, 2].map((i) => (
-        <span
-          key={i}
-          className="h-1.5 w-1.5 animate-pulse rounded-full bg-faint"
-          style={{ animationDelay: `${i * 180}ms` }}
-        />
-      ))}
+    <span className="flex items-center gap-2 py-1.5">
+      <span className="inline-flex gap-1.5">
+        {[0, 1, 2].map((i) => (
+          <span
+            key={i}
+            className="h-1.5 w-1.5 animate-pulse rounded-full bg-faint"
+            style={{ animationDelay: `${i * 180}ms` }}
+          />
+        ))}
+      </span>
+      {label && <span className="text-[13px] text-faint">{label}…</span>}
     </span>
   );
+}
+
+function Stop() {
+  return <span className="h-2.5 w-2.5 rounded-[2px] bg-current" />;
 }
 
 function Arrow() {

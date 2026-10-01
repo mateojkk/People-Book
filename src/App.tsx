@@ -35,6 +35,26 @@ export default function App() {
   const [version, setVersion] = useState(0);
   const ownership = useOwnership(() => void refreshWho());
   const [accountIdDraft, setAccountIdDraft] = useState("");
+  const [modelReady, setModelReady] = useState<boolean | null>(null);
+
+  // Is there actually a model behind this?
+  //
+  // Without GROQ_API_KEY nothing is extracted and every reply falls back to "I'm
+  // listening" -- which looks exactly like a chatbot that simply had nothing to
+  // say. Someone deploying this without the key would demo a stub and not know.
+  // So it is checked once and said out loud.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/health")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body: { config?: { groq?: boolean } } | null) => {
+        if (!cancelled) setModelReady(Boolean(body?.config?.groq));
+      })
+      .catch(() => !cancelled && setModelReady(null));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const refreshWho = useCallback(async () => {
     try {
@@ -299,6 +319,15 @@ export default function App() {
             export
           </a>
         </header>
+
+        {modelReady === false && (
+          <div className="border-b border-line bg-warn/10 px-5 py-2.5">
+            <p className="text-[13px] leading-5 text-warn">
+              <strong className="font-medium">No model configured.</strong> GROQ_API_KEY is not set,
+              so nothing said here is remembered and replies are placeholders. Set it and restart.
+            </p>
+          </div>
+        )}
 
         {error && (
           <div className="px-5 pt-4">

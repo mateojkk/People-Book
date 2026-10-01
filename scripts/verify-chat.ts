@@ -359,11 +359,77 @@ section("a follow-up can refer back to an earlier turn");
     message: "something else entirely",
     history: [{ role: "you", text: "I need to sort out the Dev thing" }, { role: "assistant", text: "Sure." }],
   });
+  // Specifically Dev. A nudge about the user's own follow-through is deliberately
+  // never suppressed -- that is the one thing worth interrupting for.
   check(
-    "it stays quiet about a person the thread is already on",
-    turn.volunteered.length === 0,
+    "it stays quiet about the person the thread is already on",
+    turn.volunteered.every((n) => n.person.toLowerCase() !== "dev"),
     turn.volunteered.map((n) => n.person),
   );
+}
+
+// ── Streaming ────────────────────────────────────────────────────────────────
+section("the reply arrives as it is written, not all at once");
+
+{
+  // The difference between a chatbot and a form with a text box. The ledger read
+  // before the reply can take seconds, so without this the user watches a spinner
+  // and then gets the whole answer in one lump.
+  //
+  // Tested against a synthetic SSE body on purpose. Against the live model this
+  // assertion fails whenever Groq is rate-limited -- which it was, repeatedly,
+  // within a minute of testing -- and a test that fails for someone else's reasons
+  // is worse than no test.
+  const { readStreamed } = await import("../api/lib/chat.ts");
+
+  const sse = (frames: string[]) =>
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        const encoder = new TextEncoder();
+        for (const frame of frames) controller.enqueue(encoder.encode(frame));
+        controller.close();
+      },
+    });
+
+  const pieces: string[] = [];
+  const streamed = await readStreamed(
+    sse([
+      'data: {"choices":[{"delta":{"content":"Got"}}]}\n\n',
+      'data: {"choices":[{"delta":{"content":" it"}}]}\n\n',
+      'data: {"choices":[{"delta":{"content":", noted."}}]}\n\n',
+      "data: [DONE]\n\n",
+    ]),
+    (t) => pieces.push(t),
+  );
+  check("each content delta is emitted as it arrives", pieces.length === 3, pieces);
+  check("and they reassemble in order", streamed === "Got it, noted.", streamed);
+
+  // Split across TCP-ish chunk boundaries, which is how it actually arrives.
+  const split: string[] = [];
+  const chunked = await readStreamed(
+    sse(['data: {"choices":[{"delta":{"cont', 'ent":"split"}}]}\n', '\ndata: [DONE]\n\n']),
+    (t) => split.push(t),
+  );
+  check("a frame split mid-JSON still parses", chunked === "split", chunked);
+
+  // A body that is not the stream shape must fall back rather than emit nonsense.
+  let called = false;
+  const notStream = await readStreamed(sse(['data: {"choices":[{"message":{"content":"x"}}]}\n\n']), () => {
+    called = true;
+  });
+  check("a non-stream body reports no deltas so the caller can fall back", notStream === null && !called, { notStream, called });
+
+  const junk: string[] = [];
+  const garbage = await readStreamed(sse(["not sse at all\n\n", "data: {broken\n\n"]), (t) => junk.push(t));
+  check("unparseable frames are skipped, not thrown", garbage === null && junk.length === 0, { garbage, junk });
+}
+
+{
+  // Without a hook it must still work, because the JSON path and the test suite
+  // both depend on it.
+  const s = stubStore();
+  const turn = await takeTurn({ store: s.store, message: "Dev prefers email, not phone calls" });
+  check("a non-streaming turn still produces a reply", turn.reply.trim().length > 0, turn.reply);
 }
 
 process.stdout.write("\n");

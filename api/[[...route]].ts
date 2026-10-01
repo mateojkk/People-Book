@@ -513,11 +513,69 @@ app.post("/api/chat", async (c) => {
         }))
     : [];
 
-  try {
-    return c.json(await takeTurn({ store: resolved.store, message: body.message.trim(), undoOf, history }));
-  } catch (error) {
-    return toErrorResponse(c, error);
+  const turn = { store: resolved.store, message: body.message.trim(), undoOf, history };
+
+  // Streaming when asked for it, JSON when not.
+  //
+  // Both paths exist deliberately: a browser wants tokens as they arrive, while
+  // curl, the test suite and anything else scripted wants one parseable body. The
+  // alternative -- streaming only -- means a failed turn cannot be read as an
+  // error, which is exactly the failure that is hardest to debug.
+  const wantsStream = (c.req.header("accept") ?? "").includes("text/event-stream");
+  if (!wantsStream) {
+    try {
+      return c.json(await takeTurn(turn));
+    } catch (error) {
+      return toErrorResponse(c, error);
+    }
   }
+
+  const encoder = new TextEncoder();
+  const send = (event: Record<string, unknown>) =>
+    encoder.encode(`data: ${JSON.stringify(event)}\n\n`);
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        // Sent before anything slow happens. Reading the ledger can take seconds,
+        // and without this the browser shows a spinner with no explanation of what
+        // it is waiting for.
+        controller.enqueue(send({ type: "status", detail: "Reading your book" }));
+
+        let opened = false;
+        const result = await takeTurn(turn, {
+          onDelta: (text) => {
+            if (!opened) {
+              opened = true;
+              controller.enqueue(send({ type: "status", detail: "Thinking" }));
+            }
+            controller.enqueue(send({ type: "delta", text }));
+          },
+        });
+
+        controller.enqueue(send({ type: "done", ...result }));
+      } catch (error) {
+        // Errors go down the same stream once it is open, because by this point
+        // there is no status code left to change.
+        const response = toErrorResponse(c, error);
+        const payload = await response.json().catch(() => ({ error: "internal", message: String(error) }));
+        controller.enqueue(send({ type: "error", ...(payload as Record<string, unknown>) }));
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache, no-transform",
+      connection: "keep-alive",
+      // Stops Vercel and nginx buffering the stream into one lump at the end,
+      // which would defeat the entire point.
+      "x-accel-buffering": "no",
+    },
+  });
 });
 
 /**

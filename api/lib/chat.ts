@@ -99,7 +99,10 @@ export interface ChatTurn {
  * Saving happens before the reply is written so the reply can speak to what was
  * just stored — telling someone "noted" is only honest if it is already durable.
  */
-export async function takeTurn({ store, message, undoOf = [], history = [] }: ChatTurnInput): Promise<ChatTurn> {
+export async function takeTurn(
+  { store, message, undoOf = [], history = [] }: ChatTurnInput,
+  hooks: { onDelta?: (text: string) => void } = {},
+): Promise<ChatTurn> {
   const { memories, coverage } = await store.listLive();
   const known = [...new Set(memories.map((m) => m.person))];
 
@@ -181,7 +184,7 @@ export async function takeTurn({ store, message, undoOf = [], history = [] }: Ch
 
   // ── 3. Answer ───────────────────────────────────────────────────────────────
   const cited = pickCitations(after, threadSubjects, volunteered);
-  const reply = await composeReply({ message, history, memories: after, phrased, cited, saved });
+  const reply = await composeReply({ message, history, memories: after, phrased, cited, saved, onDelta: hooks.onDelta });
 
   return {
     reply,
@@ -247,6 +250,15 @@ async function composeReply(args: {
   phrased: readonly string[];
   cited: readonly { id: string; person: string; text: string }[];
   saved: readonly SavedMemory[];
+  /**
+   * Called with each fragment as the model produces it.
+   *
+   * This is the difference between a chatbot and a form with a text box. The
+   * ledger read before this point can take seconds, so without streaming the user
+   * watches a spinner and learns nothing until the whole answer is ready. With it
+   * the reply arrives at reading speed.
+   */
+  onDelta?: (text: string) => void;
 }): Promise<string> {
   if (!process.env.GROQ_API_KEY) {
     return fallbackReply(args);
@@ -264,6 +276,7 @@ async function composeReply(args: {
       body: JSON.stringify({
         model: MODEL,
         temperature: 0.4,
+        stream: Boolean(args.onDelta),
         messages: [
           { role: "system", content: REPLY_SYSTEM },
           {
@@ -289,12 +302,80 @@ async function composeReply(args: {
     });
 
     if (!response.ok) return fallbackReply(args);
+
+    // Stream when we can. A non-stream body is still read fine, so a proxy that
+    // buffers the response degrades to the old behaviour rather than breaking.
+    if (args.onDelta && response.body) {
+      const streamed = await readStreamed(response.body, args.onDelta);
+      if (streamed) return streamed;
+    }
+
     const body = (await response.json()) as { choices?: { message?: { content?: string } }[] };
     const text = body.choices?.[0]?.message?.content?.trim();
     return text || fallbackReply(args);
   } catch {
     return fallbackReply(args);
   }
+}
+
+/**
+ * Reads an OpenAI-compatible SSE body, emitting content deltas.
+ *
+ * Returns the assembled text, or null if the body turned out not to be the
+ * stream shape after all -- in which case the caller falls back to a normal parse.
+ * Parsed defensively on purpose: a proxy in between can and does reshape this.
+ *
+ * Exported so it can be tested against a synthetic stream. Asserting this against
+ * the live model instead makes the test fail whenever Groq is slow, rate-limited or
+ * briefly unreachable, which is a bad trade: the thing worth pinning is the frame
+ * parsing, and that is deterministic.
+ */
+export async function readStreamed(
+  body: ReadableStream<Uint8Array>,
+  onDelta: (text: string) => void,
+): Promise<string | null> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let full = "";
+  let sawDelta = false;
+
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      // SSE frames are separated by a blank line.
+      let split: number;
+      while ((split = buffer.indexOf("\n\n")) !== -1) {
+        const frame = buffer.slice(0, split);
+        buffer = buffer.slice(split + 2);
+        for (const line of frame.split("\n")) {
+          if (!line.startsWith("data:")) continue;
+          const payload = line.slice(5).trim();
+          if (!payload || payload === "[DONE]") continue;
+          try {
+            const parsed = JSON.parse(payload) as {
+              choices?: { delta?: { content?: string }; text?: string }[];
+            };
+            const piece = parsed.choices?.[0]?.delta?.content ?? parsed.choices?.[0]?.text;
+            if (piece) {
+              sawDelta = true;
+              full += piece;
+              onDelta(piece);
+            }
+          } catch {
+            // A frame we cannot read is not worth failing the whole reply over.
+          }
+        }
+      }
+    }
+  } catch {
+    // Keep whatever arrived. A truncated answer beats no answer.
+  }
+
+  return sawDelta ? full.trim() : null;
 }
 
 const REPLY_SYSTEM = `You are the user's assistant in People Book. You know the people in their life and what they have told you.
