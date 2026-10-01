@@ -233,19 +233,22 @@ const shell = await page.evaluate(() => document.body.innerText);
 // A sentence, not a count. "2 things need you today" is a reminders app.
 check("something is said to you on arrival, in a sentence", /birthday is on the 14th . tomorrow/i.test(shell), JSON.stringify(shell.slice(0, 160)));
 check("no task count badge anywhere", !/\d+ things need/i.test(shell));
-check("and Today is not a peer tab in the rail", !/^Today$/m.test(shell));
+check("there IS a notifications tab in the rail", /^Notifications$/m.test(shell), "asked for twice");
+// What it is called is the whole point, so assert the name.
+check("and it is labelled Notifications", /Notifications/.test(shell));
+check("not called Today", !/^Today$/m.test(shell));
 check("there is no manual add form", !/Write one in|Add by hand/i.test(shell));
 check("the book is reachable from the conversation", /the book/i.test(shell));
 
 // It is reached through the notice.
-await page.getByRole("button", { name: /Open/ }).click();
+await page.getByRole("button", { name: /^Notifications$/ }).click();
 await page.waitForTimeout(600);
 const today = await page.evaluate(() => document.body.innerText);
-check("the list is headed Today", /Today/.test(today));
+check("the screen is headed Notifications", /Notifications/.test(today));
 check("an overdue item says how late", /2 days late/.test(today), today.slice(0, 160));
 check("and an item due today says so", /\btoday\b/i.test(today));
 check("each row can be finished", await page.getByRole("button", { name: "Done" }).count() >= 2);
-check("and you can get back to the conversation", /Back to talking/.test(today));
+
 // Case-insensitive on purpose: the heading is uppercased in CSS, and innerText
 // returns what is rendered rather than what is written.
 check("notifications leave a seven day record", /told you . last 7 days/i.test(today), today.slice(0, 200));

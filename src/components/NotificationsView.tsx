@@ -2,14 +2,16 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api";
 
 /**
- * What to do today.
+ * Notifications.
  *
- * Replaces a list of observations. A nudge is true and does not help anybody;
- * this is a list you can act on and, crucially, finish. The Done button is the
- * point of the screen -- without it the app can tell you what you owe and leave
- * you to fix that yourself somewhere else.
+ * What it has said to you, and what you can do about it. Three parts, in the order
+ * they matter: what it is telling you now, everything it has said this week, and
+ * everything still outstanding with a Done button on it.
  *
- * Nothing here is stored. The list is assembled from the ledger, so it cannot
+ * The Done button is the point of the lower part. Without it the app can tell you
+ * what you owe and leave you to fix that yourself somewhere else.
+ *
+ * Nothing here is stored. All of it is assembled from the ledger, so it cannot
  * disagree with the book.
  */
 
@@ -37,7 +39,7 @@ interface Today {
   coverage: "complete" | "partial";
 }
 
-export function TodayView({ onForget }: { onForget: (id: string) => void }) {
+export function NotificationsView() {
   const [data, setData] = useState<Today | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
@@ -92,13 +94,7 @@ export function TodayView({ onForget }: { onForget: (id: string) => void }) {
       <header>
         {/* Reached from the notification, not from the rail. The conversation is
             where you live; this is the receipt behind it. */}
-        <button
-          onClick={() => window.history.back()}
-          className="mb-3 text-[11.5px] text-faint transition-colors hover:text-muted"
-        >
-          ← Back to talking
-        </button>
-        <h1 className="text-lg font-bold tracking-tight text-text">Today</h1>
+        <h1 className="text-lg font-bold tracking-tight text-text">Notifications</h1>
         <p className="mt-1.5 text-[13px] leading-6 text-muted">
           {active.length === 0
             ? "Nothing outstanding."
@@ -113,6 +109,8 @@ export function TodayView({ onForget }: { onForget: (id: string) => void }) {
 
       {failed && <Note text={failed} />}
 
+      {!!data.history?.length && <ToldYou history={data.history} today={data.notice} />}
+
       {active.length === 0 ? (
         <Empty />
       ) : (
@@ -122,8 +120,6 @@ export function TodayView({ onForget }: { onForget: (id: string) => void }) {
           ))}
         </ul>
       )}
-
-      {!!data.history?.length && <ToldYou history={data.history} today={data.notice} />}
 
       {stale.length > 0 && (
         <section>

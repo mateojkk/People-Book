@@ -6,7 +6,7 @@
  * conversation, not peers of it. Three tabs side by side is how a chatbot
  * becomes a to-do app with a chat window.
  */
-type Tab = "talk" | "today" | "book";
+type Tab = "talk" | "notifications" | "book";
 
 /**
  * The notification.
@@ -52,7 +52,7 @@ function Notice({ onOpen }: { onOpen: () => void }) {
 import { useEffect, useState } from "react";
 import { ChatView } from "../components/ChatView.tsx";
 import { NudgeView } from "../components/NudgeView.tsx";
-import { TodayView } from "../components/TodayView.tsx";
+import { NotificationsView } from "../components/NotificationsView.tsx";
 import { LedgerView } from "../components/LedgerView.tsx";
 import { ErrorNote } from "../components/bits.tsx";
 import { Mark } from "./Landing.tsx";
@@ -104,9 +104,14 @@ export function Workspace({
             <Icon name="talk" />
             <span>Talk to it</span>
           </button>
-          {/* Always reachable, and always quiet. It only showed while you were
-              already on it, which made the audit surface unreachable from the one
-              place you would want to check something. */}
+          <button
+            onClick={() => setTab("notifications")}
+            aria-current={tab === "notifications"}
+            className="rail-item flex w-full items-center gap-2.5 px-2.5 py-2 text-left text-[13px] text-quiet"
+          >
+            <Icon name="notifications" />
+            <span>Notifications</span>
+          </button>
           <button
             onClick={() => setTab("book")}
             aria-current={tab === "book"}
@@ -167,7 +172,7 @@ export function Workspace({
           </div>
         </header>
 
-        {tab === "talk" && <Notice onOpen={() => setTab("today")} />}
+        {tab === "talk" && <Notice onOpen={() => setTab("notifications")} />}
         {modelReady === false && (
           <div className="border-b border-rule bg-warn/10 px-5 py-2.5">
             <p className="text-[13px] leading-5 text-warn">
@@ -188,7 +193,7 @@ export function Workspace({
           {tab !== "talk" && (
             <div className="h-full overflow-y-auto px-5 py-8">
               <div className="mx-auto w-full max-w-thread">
-                {tab === "today" && <TodayView key={version} onForget={onForget} />}
+                {tab === "notifications" && <NotificationsView key={version} />}
                 {tab === "book" && (
                   <div>
                     <button
@@ -247,7 +252,7 @@ function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, string> = {
     new: "M8 3.5v9M3.5 8h9",
     talk: "M3 5.5A1.5 1.5 0 0 1 4.5 4h7A1.5 1.5 0 0 1 13 5.5v4a1.5 1.5 0 0 1-1.5 1.5H7l-3 2.5v-2.5h-.5A1.5 1.5 0 0 1 3 9.5v-4Z",
-    today: "M8 2v3M8 11v3M2 8h3M11 8h3M4.2 4.2l2.1 2.1M9.7 9.7l2.1 2.1M11.8 4.2l-2.1 2.1M6.3 9.7l-2.1 2.1",
+    notifications: "M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0",
     book: "M3 3.5h10v9H3v-9Zm0 2.5h10M6 9h4",
 
   };

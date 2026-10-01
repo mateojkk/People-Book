@@ -17,7 +17,7 @@ import { SignIn } from "./screens/SignIn.tsx";
 import { ErrorNote } from "./components/bits.tsx";
 import type { PersonMemory } from "./types.ts";
 
-type Tab = "talk" | "today" | "book";
+type Tab = "talk" | "notifications" | "book";
 
 interface Whoami {
   signedIn: boolean;
