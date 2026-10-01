@@ -164,7 +164,21 @@ either -- a type error would have gone straight out.
 - A check that cannot fail is worse than no check. One was in the first draft of
   that script -- it read `&& false` and asserted nothing.
 
-## 17. The dependency list is a claim
+## 17. Never measure a third party through a broken request
+
+I measured the model's recurring-date output as 0 out of 4 and concluded it never
+emits the field. Some of those runs were HTTP 429s — the model was never asked.
+The conclusion happened to be right, but the evidence was not, and I nearly shipped
+a fix on the strength of a number that partly counted nothing.
+
+- A measurement of someone else's behaviour must establish that they were
+  actually reached. Check the status code before believing the result.
+- Anything a prompt is supposed to change gets one deterministic implementation as
+  well. Month arithmetic has to be exactly right eleven months before anyone finds
+  out it is not, and a model that ignores an optional field is not a bug report,
+  it is a fact about the model.
+
+## 18. The dependency list is a claim
 
 Unused dependencies were removed once and the list still drifted. Every package
 added has to be used by something in `src/` or it comes out.

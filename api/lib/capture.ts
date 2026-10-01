@@ -19,6 +19,7 @@
  */
 
 import { CONFIRM_THRESHOLD, type CaptureResult, type MemoryCandidate, type MemoryType } from "../../shared/types.ts";
+import { recurringDate, monthForDayOnly, isFullMonthDay } from "./dates.ts";
 
 const MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
 
@@ -45,6 +46,12 @@ Hard rules:
 8. "explicit" is true only when the writer directly instructed you to remember it ("remember that...", "don't forget...").
 9. Dates must be ISO YYYY-MM-DD. Use today's date for "today"/"tomorrow" (tomorrow = +1 day). Omit a date you cannot resolve rather than guessing.
 10. Never store a taboo's subject matter as if it were normal news. A taboo is one candidate, type "taboo".
+11. RECURRING DATES. Some dates come round every year and have no year attached: a birthday, a wedding anniversary, the day someone's lease renews. For these you MUST set "anniversary" to the day and month as "MM-DD" — zero padded, "01-05" not "1-5". Do NOT put these in "dueAt": there is no year to put there, and a due date in the past is a date this app will never mention again.
+    "Mara's birthday is the 14th"        -> anniversary "11-14"
+    "Dev gets married on the 2nd of June" -> anniversary "06-02"
+    "It's Nila's first birthday on the 9th" -> anniversary "09-09"
+    "our anniversary is March 3rd"        -> anniversary "03-03"
+    If the message gives a year, or the date is a one-off ("her flight is on the 3rd"), use "dueAt" instead and leave "anniversary" out.
 
 Today is ${new Date().toISOString().slice(0, 10)}.`;
 
@@ -160,6 +167,25 @@ function normalise(raw: unknown): MemoryCandidate[] {
  * reach the confirm screen, so a model that invents "Daniel" produces nothing
  * rather than a person who does not exist.
  */
+/**
+ * Fills in the recurring date, if the model left it out.
+ *
+ * Kept to the candidate's own text, so it can only ever recover something the
+ * message actually said. An existing value is never overwritten -- if the model
+ * does get it right on a future run, its answer wins.
+ */
+function withRecurringDate(candidate: MemoryCandidate, now: Date): MemoryCandidate {
+  if (candidate.anniversary) return candidate;
+
+  const found = recurringDate(candidate.text);
+  if (!found) return candidate;
+
+  const resolved = isFullMonthDay(found) ? found : monthForDayOnly(found, now);
+  if (!resolved) return candidate;
+
+  return { ...candidate, anniversary: resolved };
+}
+
 export async function capture(
   message: string,
   knownPeople: readonly string[],
@@ -194,7 +220,11 @@ export async function capture(
 
   try {
     const raw = await extractRaw(message, knownPeople, history);
-    const candidates = normalise(raw).filter((c) => isAttributable(c.person, allowed, said));
+    const candidates = normalise(raw)
+      .filter((c) => isAttributable(c.person, allowed, said))
+      // The model did not emit `anniversary` in 4 runs out of 4, so it is derived
+      // here. See dates.ts for why this is not a prompt problem.
+      .map((c) => withRecurringDate(c, new Date()));
     return { candidates };
   } catch (error) {
     return {
