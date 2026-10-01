@@ -151,7 +151,20 @@ you say is scaffolding for a product that no longer needs it.
   main thing. A citation you can follow is the point; a database tab is not.
 - If a feature only makes sense while the product is worse, delete it.
 
-## 16. The dependency list is a claim
+## 16. Verify the artifact that deploys, not the one you are used to
+
+`npm run build` runs vite, which builds the client. Vercel then deploys a second
+artifact the build never touches: the API as a Node serverless function. So a
+green build said nothing about half of what ships, and it did not typecheck
+either -- a type error would have gone straight out.
+
+- `build` now typechecks first, so a type error fails the deploy.
+- `verify:build` bundles the function the way Vercel does, loads the bundle, and
+  calls it. A dependency that only resolves in development fails there.
+- A check that cannot fail is worse than no check. One was in the first draft of
+  that script -- it read `&& false` and asserted nothing.
+
+## 17. The dependency list is a claim
 
 Unused dependencies were removed once and the list still drifted. Every package
 added has to be used by something in `src/` or it comes out.
