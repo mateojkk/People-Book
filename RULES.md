@@ -114,7 +114,18 @@ it. Saying a design "looks right" is a claim about something unobserved.
 - Say what was changed and what was verified. Let the other pair of eyes judge.
 - Build and typecheck before claiming, every time, including for a one-line edit.
 
-## 13. The dependency list is a claim
+## 13. Never overlap the chrome
+
+The "Jump to latest" button was pulled up with a negative margin so it would sit
+over the composer. Two bordered boxes on top of each other, which looks exactly
+like an input inside an input — and it was reported as a rendering bug, because to
+the person looking at it that is what it was.
+
+- Chrome goes in flow. A negative margin that saves twelve pixels is not worth
+  the ambiguity.
+- If a layout can be read as broken, it is broken, whatever the CSS intends.
+
+## 14. The dependency list is a claim
 
 Unused dependencies were removed once and the list still drifted. Every package
 added has to be used by something in `src/` or it comes out.

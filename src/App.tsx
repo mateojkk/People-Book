@@ -366,7 +366,7 @@ export default function App() {
           {tab === "talk" && <ChatView />}
           {tab !== "talk" && (
             <div className="h-full overflow-y-auto px-5 py-8">
-              <div className="thread">
+              <div className="mx-auto w-full max-w-thread">
                 {tab === "nudges" && <NudgeView key={version} onForget={forget} />}
                 {tab === "book" && <LedgerView key={version} onForget={forget} />}
                 {tab === "add" && <AddView onSaved={() => setVersion((v) => v + 1)} />}

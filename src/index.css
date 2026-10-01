@@ -76,12 +76,14 @@ em {
 }
 
 /* ── The measure ─────────────────────────────────────────────────────────────
-   The single biggest difference between a chat interface that looks considered
-   and one that looks like a demo is how wide the prose gets. Capped, always. */
-.thread {
-  width: 100%;
-  max-width: 45rem;
-  margin-inline: auto;
+   768px is what ChatGPT and Claude use, Perplexity about 720. Past roughly that,
+   line length stops being readable and the eye starts losing the start of the
+   next line. Capped, always, and centred. */
+@theme {
+  --container-thread: 46rem;
+}
+.max-w-thread {
+  max-width: var(--container-thread);
 }
 
 /* ── The margin ──────────────────────────────────────────────────────────────
