@@ -75,9 +75,9 @@ export function NudgeView({ onForget }: { onForget: (id: string) => void }) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-sm font-medium text-quiet">What came to you</h2>
+        <h2 className="text-sm font-medium text-muted">What came to you</h2>
 
-        <label className="flex cursor-pointer items-center gap-2 text-xs text-quiet">
+        <label className="flex cursor-pointer items-center gap-2 text-xs text-muted">
           <input
             type="checkbox"
             checked={memoryOn}
@@ -85,7 +85,7 @@ export function NudgeView({ onForget }: { onForget: (id: string) => void }) {
             className="h-3.5 w-3.5 accent-emerald-300"
           />
           <span>
-            memory <span className="tabular font-medium text-bright">{memoryOn ? "on" : "off"}</span>
+            memory <span className="tabular font-medium text-ink">{memoryOn ? "on" : "off"}</span>
           </span>
         </label>
       </div>
@@ -95,7 +95,7 @@ export function NudgeView({ onForget }: { onForget: (id: string) => void }) {
       {loading ? (
         <div className="space-y-2" aria-busy>
           {[0, 1, 2].map((i) => (
-            <div key={i} className="h-16 animate-pulse rounded border border-line bg-surface" />
+            <div key={i} className="h-16 animate-pulse rounded border border-rule bg-paper" />
           ))}
         </div>
       ) : !data || data.nudges.length === 0 ? (
@@ -107,15 +107,15 @@ export function NudgeView({ onForget }: { onForget: (id: string) => void }) {
       ) : (
         <ul className="space-y-2">
           {data.nudges.map((nudge) => (
-            <li key={nudge.id} className="rounded border border-line bg-surface p-3">
+            <li key={nudge.id} className="rounded border border-rule bg-paper p-3">
               <div className="flex items-start justify-between gap-3">
-                <p className="text-sm leading-snug text-bright">{nudge.text}</p>
+                <p className="text-sm leading-snug text-ink">{nudge.text}</p>
                 <KindTag kind={nudge.kind} />
               </div>
               <SourceTrace memory={byId.get(nudge.sourceMemoryId)} onForget={onForget} />
               <button
                 onClick={() => void dismiss(nudge.id)}
-                className="mt-2 text-[11px] text-quiet underline decoration-dotted underline-offset-2 hover:text-bright"
+                className="mt-2 text-[11px] text-muted underline decoration-dotted underline-offset-2 hover:text-ink"
               >
                 not now
               </button>
@@ -133,10 +133,10 @@ export function NudgeView({ onForget }: { onForget: (id: string) => void }) {
       )}
 
       {data && (
-        <div className="border-t border-line pt-3">
+        <div className="border-t border-rule pt-3">
           <BasisNote basis={data.basis} computedAt={data.computedAt} />
           {blobCount !== null && (
-            <p className="mt-1 text-[11px] text-quiet">
+            <p className="mt-1 text-[11px] text-muted">
               <span className="tabular">{blobCount}</span> blob{blobCount === 1 ? "" : "s"} written to
               your Walrus Memory account.
             </p>

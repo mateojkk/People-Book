@@ -18,7 +18,7 @@ const KIND_LABEL: Record<NudgeKind, string> = {
 
 export function KindTag({ kind }: { kind: NudgeKind }) {
   return (
-    <span className="mono rounded border border-line px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-quiet">
+    <span className="mono rounded border border-rule px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-muted">
       {KIND_LABEL[kind]}
     </span>
   );
@@ -41,23 +41,23 @@ export function SourceTrace({
 }) {
   if (!memory) {
     return (
-      <p className="mt-2 text-xs text-quiet">
+      <p className="mt-2 text-xs text-muted">
         This one is a pattern across your other promises, not a single stored fact.
       </p>
     );
   }
   return (
-    <div className="mt-2 border-l-2 border-line pl-2.5">
-      <p className="text-[11px] text-quiet">
+    <div className="mt-2 border-l-2 border-rule pl-2.5">
+      <p className="text-[11px] text-muted">
         from your book
         {memory.occurredAt && <> · noted {memory.occurredAt}</>}
         {memory.dueAt && <> · due {memory.dueAt}</>}
       </p>
-      <p className="mt-0.5 text-xs text-quiet/90">{memory.text}</p>
+      <p className="mt-0.5 text-xs text-muted/90">{memory.text}</p>
       {onForget && (
         <button
           onClick={() => onForget(memory.id)}
-          className="mt-1 text-[11px] text-quiet underline decoration-dotted underline-offset-2 hover:text-stop"
+          className="mt-1 text-[11px] text-muted underline decoration-dotted underline-offset-2 hover:text-stop"
         >
           forget this
         </button>
@@ -104,23 +104,23 @@ export function BasisNote({
   computedAt: string;
 }) {
   return (
-    <p className="text-[11px] leading-relaxed text-quiet">
+    <p className="text-[11px] leading-relaxed text-muted">
       {basis.memoryDisabled ? (
         <>
-          Memory is <strong className="text-bright">off</strong>. Every one of these reminders is a
+          Memory is <strong className="text-ink">off</strong>. Every one of these reminders is a
           recall, so with memory off there is nothing to show — not a worse version, nothing. That is
           the honest baseline.
         </>
       ) : (
         <>
-          Chosen from <strong className="text-bright">{basis.confirmedCount}</strong> confirmed
+          Chosen from <strong className="text-ink">{basis.confirmedCount}</strong> confirmed
           memor{basis.confirmedCount === 1 ? "y" : "ies"} out of {basis.memoryCount} in your book, by
           rules with no model involved — dates inside {basis.horizonDays} days, promises still open,
           people gone quiet, and your own unkept promises.
           {basis.inferredCount > 0 && (
             <>
               {" "}
-              <span className="text-accent/80">
+              <span className="text-spine/80">
                 {basis.inferredCount} extracted but unconfirmed memor{basis.inferredCount === 1 ? "y" : "ies"}{" "}
                 {basis.inferredCount === 1 ? "is" : "are"} in your ledger and {basis.inferredCount === 1 ? "is" : "are"} not
                 allowed to appear here.
@@ -144,5 +144,5 @@ export function ErrorNote({ message }: { message: string }) {
 }
 
 export function Empty({ children }: { children: React.ReactNode }) {
-  return <p className="rounded border border-dashed border-line px-3 py-6 text-center text-sm text-quiet">{children}</p>;
+  return <p className="rounded border border-dashed border-rule px-3 py-6 text-center text-sm text-muted">{children}</p>;
 }

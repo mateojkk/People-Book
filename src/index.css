@@ -1,36 +1,49 @@
 @import "tailwindcss";
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   One light palette, kept in token names rather than sprinkled through the JSX.
+   People Book looks like a book, not a dashboard.
 
-   Every component refers to these by name (bg-surface, text-quiet, border-line),
-   so the whole app restyles from this block alone. That is the only reason the
-   dark and light versions could coexist as a decision rather than as two forks of
-   every file.
+   The reference was a chat interface, and the risk was ending up with a
+   recoloured copy of it: grey-on-white, a teal accent, a centred column. So this
+   palette is deliberately warm and physical instead — paper, ink, and one
+   oxblood spine — and the interface borrows the one idea that actually fits the
+   product, which is the margin. A person is named once, in the margin, and their
+   memories sit in the column beside it, the way a real book works.
+
+   Every component refers to these by name (bg-paper, text-ink, border-rule), so
+   the whole app restyles from this block. `paper` is the page, `ink` is the text.
    ──────────────────────────────────────────────────────────────────────────── */
 @theme {
-  /* `ink` is the canvas. It reads like a counter-intuitive name on a light theme,
-     but it keeps the meaning "the page itself" instead of "the text colour". */
-  --color-ink: #ffffff;
-  --color-surface: #fafafa;
-  --color-surface-2: #f4f4f5;
-  --color-surface-3: #e9eaec;
-  --color-line: #e4e4e7;
-  --color-line-soft: #eeeef0;
+  /* Page and panels. Warm, never #fff: pure white reads as a screen. */
+  --color-paper: #fbf9f4;
+  --color-paper-2: #f4f0e6;
+  --color-paper-3: #ebe5d7;
 
-  --color-bright: #18181b;
-  --color-quiet: #5f6672;
-  --color-faint: #9ba1ab;
+  /* Rules and borders. Also warm, and low contrast on purpose — these should
+     read as the edge of a page, not as a divider drawn on top of it. */
+  --color-rule: #e0d9c8;
+  --color-rule-soft: #ebe5d8;
 
-  --color-accent: #0f6e78;
-  --color-accent-soft: #e6f2f3;
-  --color-warn: #a45c07;
-  --color-stop: #b4342b;
-  --color-link: #0f6e78;
+  /* Ink, and the two weights of it. */
+  --color-ink: #1b1917;
+  --color-muted: #6a6357;
+  --color-faint: #99918080;
 
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
-    "Helvetica Neue", sans-serif;
+  /* One accent: the spine. Oxblood rather than a product-y teal, and used
+     sparingly — a tab, a mark, a live indicator. */
+  --color-spine: #7c2d26;
+  --color-spine-soft: #f6ebe8;
+
+  --color-warn: #8a5a10;
+  --color-stop: #a33127;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
 }
+
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
 
 html,
 body,
@@ -39,49 +52,75 @@ body,
 }
 
 body {
-  background: var(--color-ink);
-  color: var(--color-bright);
+  background-color: var(--color-paper);
+  color: var(--color-ink);
   font-family: var(--font-sans);
+  /* Inter's default tracking is a little loose at small sizes. */
+  letter-spacing: -0.011em;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
 }
 
-/* ── Reading measure ─────────────────────────────────────────────────────────
-   The single biggest thing separating a chat interface that looks considered from
-   one that looks like a demo is the width of the prose column. Capped and
-   centred, never stretched to the viewport. */
+/* Inter has no true italics in the set we ship, and a synthesised oblique on a
+   note this small looks like a rendering fault rather than an emphasis. */
+em {
+  font-style: normal;
+  font-weight: 500;
+}
+
+/* ── The measure ─────────────────────────────────────────────────────────────
+   The single biggest difference between a chat interface that looks considered
+   and one that looks like a demo is how wide the prose gets. Capped, always. */
 .thread {
   width: 100%;
-  max-width: 47rem;
+  max-width: 45rem;
   margin-inline: auto;
 }
 
-/* ── The composer ───────────────────────────────────────────────────────────
-   Grows with what you type up to a point, then scrolls. `field-sizing` handles
-   the growth natively, so there is no measured height fighting React's render. */
+/* ── The margin ──────────────────────────────────────────────────────────────
+   The book's one borrowed idea. A name in the margin, memories in the column.
+   Collapses to a plain stack on narrow screens rather than pretending a two
+   column layout fits on a phone. */
+@media (min-width: 40rem) {
+  .marginalia {
+    display: grid;
+    grid-template-columns: 7.5rem 1fr;
+    column-gap: 1.25rem;
+  }
+  .marginalia > .margin-name {
+    text-align: right;
+  }
+}
+
+/* ── The composer ────────────────────────────────────────────────────────────
+   Grows with what you type up to a point, then scrolls. `field-sizing` does the
+   measuring natively, so nothing is fighting React's render. */
 .composer textarea {
   field-sizing: content;
   max-height: 11rem;
 }
 
-/* ── Rail items ──────────────────────────────────────────────────────────────
-   Active state is a surface, not a colour change alone: colour alone fails on
-   contrast ratios and is easy to lose in a long list of similar rows. */
+/* A ruled line under the composer, like the bottom of a page. */
+.rule-top {
+  border-top: 1px solid var(--color-rule);
+}
+
+/* Active rail item: a spine tab, not a grey highlight. */
 .rail-item {
-  border-radius: 0.5rem;
+  border-radius: 0.375rem;
   transition: background-color 120ms ease, color 120ms ease;
 }
 .rail-item:hover {
-  background-color: var(--color-surface-2);
+  background-color: var(--color-paper-2);
 }
 .rail-item[aria-current="true"] {
-  background-color: var(--color-surface-3);
-  color: var(--color-bright);
+  background-color: var(--color-paper-3);
+  color: var(--color-ink);
   font-weight: 500;
 }
 
-/* ── Scroll edges ────────────────────────────────────────────────────────────
-   A long thread should not end in a hard cut against the chrome. */
+/* Scrollback fades rather than ending in a hard cut against the chrome. */
 .fade-edges {
   mask-image: linear-gradient(
     to bottom,
@@ -93,9 +132,9 @@ body {
 }
 
 .attention {
-  animation: rise 200ms ease both;
+  animation: settle 200ms ease both;
 }
-@keyframes rise {
+@keyframes settle {
   from {
     opacity: 0;
     transform: translateY(0.25rem);
@@ -106,20 +145,18 @@ body {
   }
 }
 
-/* Every timestamp and claim is monospaced, so a nudge and the memory it came from
-   can be compared by eye without the numerals shifting width. */
 .tabular,
 code,
 .mono {
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 
-/* Keyboard focus has to be visible, since half the chrome here is custom. */
+/* Custom chrome everywhere, so focus has to be drawn rather than inherited. */
 :where(button, a, textarea, summary):focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: 2px solid var(--color-spine);
   outline-offset: 2px;
-  border-radius: 0.375rem;
+  border-radius: 0.25rem;
 }
 
 @media (prefers-reduced-motion: reduce) {

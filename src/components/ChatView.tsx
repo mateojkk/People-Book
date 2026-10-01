@@ -34,8 +34,9 @@ export function ChatView() {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [turns]);
 
-  const send = useCallback(async () => {
-      const message = draft.trim();
+  const send = useCallback(
+    async (textOverride?: string) => {
+      const message = (typeof textOverride === "string" ? textOverride : draft).trim();
       if (!message || busy) return;
 
       const mine: Turn = { id: nextId(), role: "you", text: message };
@@ -85,62 +86,97 @@ export function ChatView() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="fade-edges min-h-0 flex-1 overflow-y-auto">
-        <div className="thread px-5 py-10">
-          {turns.length === 0 ? (
-            <Opening />
-          ) : (
-            <div className="space-y-7">
-              {turns.map((turn) => (
-                <TurnBlock key={turn.id} turn={turn} onUndo={undo} />
-              ))}
-            </div>
-          )}
-          <div ref={endRef} />
-        </div>
-      </div>
-
-      <div className="shrink-0 px-5 pb-4">
-        <div className="thread composer">
-          <div className="rounded-2xl border border-line bg-ink p-2 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_16px_rgba(0,0,0,0.04)] transition-colors focus-within:border-faint">
-            <textarea
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                // Enter sends, Shift+Enter is a newline, which is what people expect.
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  void send();
-                }
-              }}
-              rows={1}
-              aria-label="Message"
-              placeholder="Tell it about the people in your life…"
-              className="w-full resize-none bg-transparent px-3 py-2.5 text-[15px] leading-6 text-bright outline-none placeholder:text-faint"
-            />
-            <div className="flex items-center justify-between gap-2 px-1 pb-0.5">
-              {/* Stands in for the model/mode selector this genre puts on the left.
-                  It is a real disclosure, not decoration: it says out loud that
-                  nothing is written until you undo it. */}
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 py-1 text-[11.5px] text-quiet">
-                <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-                {busy ? "Remembering…" : "Auto-saves"}
+      {turns.length === 0 ? (
+        <div className="fade-edges flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-8">
+          <div className="w-full max-w-[47rem]">
+            {/* Hero Heading inspired by reference UI */}
+            <div className="mb-6 text-left">
+              <span className="text-[12px] font-semibold uppercase tracking-wider text-muted">
+                Search
               </span>
+              <h1 className="mt-1 text-3xl font-medium tracking-tight text-ink sm:text-[34px]">
+                What do you want to know?
+              </h1>
+            </div>
+
+            {/* Omni-Composer Hero */}
+            <ComposerBox
+              draft={draft}
+              setDraft={setDraft}
+              onSend={() => void send()}
+              busy={busy}
+              placeholder="Ask anything..."
+            />
+
+            {/* Starter Cards directly beneath the composer */}
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
               <button
-                onClick={() => void send()}
-                disabled={busy || !draft.trim()}
-                aria-label={busy ? "Working" : "Send"}
-                className="grid h-8 w-8 place-items-center rounded-full bg-bright text-ink transition-opacity disabled:opacity-25"
+                type="button"
+                onClick={() => void send("What is currently due or approaching in my book?")}
+                className="group relative flex flex-col justify-between rounded-xl border border-teal-500/25 bg-gradient-to-br from-teal-950/40 via-teal-900/20 to-paper-2 p-4 text-left shadow-sm transition-all hover:border-teal-500/50 hover:from-teal-950/50"
               >
-                <Arrow />
+                <div>
+                  <div className="flex items-center gap-2 text-[14px] font-medium text-teal-300">
+                    <SearchIcon className="h-4 w-4" />
+                    <span>Search anything</span>
+                  </div>
+                  <p className="mt-1 text-[12.5px] leading-5 text-muted group-hover:text-ink/90">
+                    Catch up on approaching dates, open promises, and people who went quiet.
+                  </p>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setDraft(
+                    "Had coffee with Maya today. She mentioned she's moving to Oslo next month, and I promised to introduce her to Jonas before Friday.",
+                  )
+                }
+                className="group relative flex flex-col justify-between rounded-xl border border-rule bg-paper-2 p-4 text-left shadow-sm transition-all hover:border-rule-soft hover:bg-paper-3"
+              >
+                <div>
+                  <div className="flex items-center gap-2 text-[14px] font-medium text-ink">
+                    <ComputerIcon className="h-4 w-4 text-muted" />
+                    <span>Get work done with Computer</span>
+                    <span className="rounded bg-teal-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-teal-300">
+                      NEW
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[12.5px] leading-5 text-muted group-hover:text-ink/90">
+                    Log conversations and promises — facts and taboos are sealed onchain.
+                  </p>
+                </div>
               </button>
             </div>
           </div>
-          <p className="mt-2 text-center text-[11px] text-faint">
-            Enter to send · Shift+Enter for a new line · anything it saves can be undone
-          </p>
         </div>
-      </div>
+      ) : (
+        <>
+          <div className="fade-edges min-h-0 flex-1 overflow-y-auto">
+            <div className="thread px-5 py-10">
+              <div className="space-y-7">
+                {turns.map((turn) => (
+                  <TurnBlock key={turn.id} turn={turn} onUndo={undo} />
+                ))}
+              </div>
+              <div ref={endRef} />
+            </div>
+          </div>
+
+          <div className="shrink-0 px-5 pb-4">
+            <div className="thread">
+              <ComposerBox
+                draft={draft}
+                setDraft={setDraft}
+                onSend={() => void send()}
+                busy={busy}
+                placeholder="Ask anything or tell it about someone…"
+              />
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -215,8 +251,10 @@ async function streamTurn(
 function TurnBlock({ turn, onUndo }: { turn: Turn; onUndo: (turnId: string, memoryId: string) => void }) {
   if (turn.role === "you") {
     return (
+      // Right-aligned and quiet. Your own words are context for the reply, not the
+      // thing being looked at, so they sit back.
       <div className="flex justify-end">
-        <div className="max-w-[85%] rounded-2xl rounded-br-md bg-surface-2 px-4 py-2.5 text-[15px] leading-6 text-bright">
+        <div className="max-w-[85%] rounded-lg bg-paper-2 px-4 py-2.5 text-[15px] leading-6 text-muted">
           {turn.text}
         </div>
       </div>
@@ -225,7 +263,7 @@ function TurnBlock({ turn, onUndo }: { turn: Turn; onUndo: (turnId: string, memo
 
   return (
     <div className="attention space-y-3">
-      <div className="max-w-[46rem] text-[15px] leading-7 text-bright">
+      <div className="max-w-[46rem] text-[15px] leading-7 text-ink">
         {turn.pending ? (
           turn.text ? (
             // Words are arriving: show them, with a caret, and no spinner competing.
@@ -237,29 +275,31 @@ function TurnBlock({ turn, onUndo }: { turn: Turn; onUndo: (turnId: string, memo
             <Typing label={turn.status} />
           )
         ) : turn.failed ? (
-          <p className="text-quiet">{turn.failed}</p>
+          <p className="text-muted">{turn.failed}</p>
         ) : (
           <p className="whitespace-pre-wrap">{turn.text}</p>
         )}
       </div>
 
       {!!turn.saved?.length && (
-        <div className="space-y-1.5">
+        // Marginalia, not cards. The name sits in the margin and the memory sits
+        // in the column, which is how a book of people actually reads: you learn
+        // whose entry you are in from the margin, not from a label on a chip.
+        <div className="space-y-2 border-l border-rule-soft pl-3">
           {turn.saved.map((memory) => (
-            <div
-              key={memory.id}
-              className="group flex items-start gap-3 rounded-xl border border-line bg-surface px-3.5 py-2.5"
-            >
-              <span className="mt-0.5 w-16 shrink-0 truncate text-[11px] font-medium text-quiet">
+            <div key={memory.id} className="marginalia group">
+              <span className="margin-name truncate pt-0.5 text-[12px] font-medium text-spine">
                 {memory.person}
               </span>
-              <span className="flex-1 text-[13.5px] leading-5 text-quiet">{memory.text}</span>
-              <button
-                onClick={() => onUndo(turn.id, memory.id)}
-                className="shrink-0 text-[11px] text-faint opacity-0 transition-opacity group-hover:opacity-100 hover:text-bright focus-visible:opacity-100"
-              >
-                Undo
-              </button>
+              <span className="flex items-start gap-3">
+                <span className="flex-1 text-[13.5px] leading-6 text-muted">{memory.text}</span>
+                <button
+                  onClick={() => onUndo(turn.id, memory.id)}
+                  className="shrink-0 text-[11px] text-faint opacity-0 transition-opacity group-hover:opacity-100 hover:text-ink focus-visible:opacity-100"
+                >
+                  Undo
+                </button>
+              </span>
             </div>
           ))}
         </div>
@@ -276,10 +316,10 @@ function TurnBlock({ turn, onUndo }: { turn: Turn; onUndo: (turnId: string, memo
           <summary className="cursor-pointer select-none">
             Based on {turn.cited.length} memor{turn.cited.length === 1 ? "y" : "ies"}
           </summary>
-          <ul className="mt-1.5 space-y-1 border-l border-line pl-3">
+          <ul className="mt-1.5 space-y-1 border-l border-rule pl-3">
             {turn.cited.map((c) => (
               <li key={c.id} className="leading-5">
-                <span className="text-quiet">{c.person}:</span> {c.text}
+                <span className="text-muted">{c.person}:</span> {c.text}
               </li>
             ))}
           </ul>
@@ -287,26 +327,6 @@ function TurnBlock({ turn, onUndo }: { turn: Turn; onUndo: (turnId: string, memo
       )}
 
       {turn.captureError && <p className="text-[11.5px] text-warn">Not remembered · {turn.captureError}</p>}
-    </div>
-  );
-}
-
-function Opening() {
-  return (
-    <div className="pt-6">
-      {/* Centred mark, the way this genre opens an empty thread: the interface is
-          saying "ask me something" before you have typed a character. */}
-      <div className="flex flex-col items-center text-center">
-        <span className="grid h-11 w-11 place-items-center rounded-xl bg-accent text-[19px] font-bold text-ink">
-          P
-        </span>
-        <h1 className="mt-4 text-[22px] font-semibold tracking-tight">What do you want to remember?</h1>
-        <p className="mt-2 max-w-md text-[14px] leading-6 text-quiet">
-          Dates, promises, how someone takes a call, who has not been in touch. Say it the way you
-          would to a friend.
-        </p>
-      </div>
-
     </div>
   );
 }
@@ -328,14 +348,238 @@ function Typing({ label }: { label?: string }) {
   );
 }
 
-function Stop() {
-  return <span className="h-2.5 w-2.5 rounded-[2px] bg-current" />;
+function ComposerBox({
+  draft,
+  setDraft,
+  onSend,
+  busy,
+  placeholder,
+}: {
+  draft: string;
+  setDraft: (v: string) => void;
+  onSend: () => void;
+  busy: boolean;
+  placeholder?: string;
+}) {
+  const [showPlusMenu, setShowPlusMenu] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+
+  const toggleRecording = () => {
+    const SpeechRec =
+      (window as unknown as { SpeechRecognition?: any; webkitSpeechRecognition?: any }).SpeechRecognition ||
+      (window as unknown as { SpeechRecognition?: any; webkitSpeechRecognition?: any }).webkitSpeechRecognition;
+
+    if (!SpeechRec) {
+      alert("Voice recognition is not supported in this browser.");
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRec();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = "en-US";
+
+      recognition.onstart = () => setIsRecording(true);
+      recognition.onend = () => setIsRecording(false);
+      recognition.onerror = () => setIsRecording(false);
+      recognition.onresult = (event: any) => {
+        const transcript = event.results?.[0]?.[0]?.transcript;
+        if (transcript) {
+          setDraft(draft ? `${draft} ${transcript}` : transcript);
+        }
+      };
+
+      recognition.start();
+    } catch {
+      setIsRecording(false);
+    }
+  };
+
+  return (
+    <div className="composer relative">
+      <div className="rounded-2xl border border-rule bg-paper-2 p-2 shadow-lg transition-colors focus-within:border-rule-soft">
+        <textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              onSend();
+            }
+          }}
+          rows={1}
+          aria-label="Message"
+          placeholder={placeholder ?? "Ask anything..."}
+          className="w-full resize-none bg-transparent px-3 py-2.5 text-[15px] leading-6 text-ink outline-none placeholder:text-faint"
+        />
+
+        {/* Action pills & controls toolbar matching inspiration */}
+        <div className="mt-1 flex flex-wrap items-center justify-between gap-2 px-1 pb-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {/* Quick action + button */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowPlusMenu((v) => !v)}
+                className="grid h-7 w-7 place-items-center rounded-lg text-muted hover:bg-paper-3 hover:text-ink"
+                title="Quick memory templates"
+              >
+                <PlusIcon className="h-4 w-4" />
+              </button>
+
+              {showPlusMenu && (
+                <div className="absolute bottom-9 left-0 z-50 w-60 rounded-xl border border-rule bg-paper-2 p-1.5 shadow-xl backdrop-blur-md">
+                  <p className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-faint">
+                    Quick Templates
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDraft("Never mention [topic] about [person].");
+                      setShowPlusMenu(false);
+                    }}
+                    className="w-full rounded-lg px-2.5 py-1.5 text-left text-xs text-ink hover:bg-paper-3"
+                  >
+                    🚫 Taboo / restriction rule
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDraft("I promised [person] to [task] by [date].");
+                      setShowPlusMenu(false);
+                    }}
+                    className="w-full rounded-lg px-2.5 py-1.5 text-left text-xs text-ink hover:bg-paper-3"
+                  >
+                    🤝 Log an unkept promise
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDraft("[person]'s birthday is [date].");
+                      setShowPlusMenu(false);
+                    }}
+                    className="w-full rounded-lg px-2.5 py-1.5 text-left text-xs text-ink hover:bg-paper-3"
+                  >
+                    🎂 Stored date / occasion
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Mode / Search pill */}
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-rule bg-paper px-2.5 py-1 text-[12px] font-medium text-muted">
+              <SearchIcon className="h-3 w-3" />
+              <span>Search</span>
+              <ChevronDown className="h-3 w-3 opacity-60" />
+            </span>
+
+            {/* Computer / Ledger pill */}
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-rule bg-paper px-2.5 py-1 text-[12px] font-medium text-muted">
+              <ComputerIcon className="h-3 w-3 text-faint" />
+              <span>Computer</span>
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Model Selector */}
+            <span className="inline-flex items-center gap-1 text-[12px] text-muted">
+              <span>Model</span>
+              <ChevronDown className="h-3 w-3 opacity-60" />
+            </span>
+
+            {/* Voice Input */}
+            <button
+              type="button"
+              onClick={toggleRecording}
+              className={`grid h-7 w-7 place-items-center rounded-full text-muted hover:bg-paper-3 hover:text-ink ${
+                isRecording ? "animate-pulse bg-stop/20 text-stop" : ""
+              }`}
+              title="Voice input"
+            >
+              <MicIcon className="h-3.5 w-3.5" />
+            </button>
+
+            {/* Submit / Waveform button */}
+            <button
+              type="button"
+              onClick={onSend}
+              disabled={busy || !draft.trim()}
+              aria-label={busy ? "Working" : "Send"}
+              className={`grid h-8 w-8 place-items-center rounded-full transition-all ${
+                draft.trim()
+                  ? "bg-ink text-paper shadow-md"
+                  : "bg-paper-3 text-muted opacity-50"
+              }`}
+            >
+              {draft.trim() ? <ArrowUpIcon className="h-4 w-4" /> : <WaveformIcon className="h-4 w-4" />}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
-function Arrow() {
+function SearchIcon({ className = "h-4 w-4" }: { className?: string }) {
   return (
-    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path d="M8 13V3M8 3L4 7M8 3l4 4" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+    <svg className={className} viewBox="0 0 16 16" fill="none" stroke="currentColor">
+      <circle cx="7" cy="7" r="4.5" strokeWidth="1.5" />
+      <path d="M10.5 10.5L14 14" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ComputerIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 16 16" fill="none" stroke="currentColor">
+      <rect x="2.5" y="3" width="11" height="8" rx="1.5" strokeWidth="1.4" />
+      <path d="M1 13h14M6 11v2M10 11v2" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function PlusIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 16 16" fill="none" stroke="currentColor">
+      <path d="M8 3.5v9M3.5 8h9" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ChevronDown({ className = "h-3 w-3" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 12 12" fill="none" stroke="currentColor">
+      <path d="M3 4.5l3 3 3-3" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function MicIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 16 16" fill="none" stroke="currentColor">
+      <rect x="5.5" y="2" width="5" height="8" rx="2.5" strokeWidth="1.4" />
+      <path d="M3.5 7a4.5 4.5 0 0 0 9 0M8 12.5v2.5M5.5 15h5" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function WaveformIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 16 16" fill="none" stroke="currentColor">
+      <path
+        d="M2.5 8h1M5 5v6M7.5 3v10M10 6v4M12.5 7v2M14.5 8h.5"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function ArrowUpIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 16 16" fill="none" stroke="currentColor">
+      <path d="M8 13V3M8 3L4 7M8 3l4 4" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

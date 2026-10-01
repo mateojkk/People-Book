@@ -56,21 +56,21 @@ export function AddView({ onSaved }: { onSaved: () => void }) {
 
   return (
     <div className="space-y-3">
-      <h2 className="text-sm font-medium text-quiet">Add something</h2>
+      <h2 className="text-sm font-medium text-muted">Add something</h2>
 
       <textarea
         value={message}
         onChange={(e) => setMessage(e.target.value)}
         rows={4}
         placeholder="Tell it something. “I said I'd send Maya the photos, she's going on a trip on the 12th” — it will propose what is worth keeping, and you decide."
-        className="w-full resize-y rounded border border-line bg-surface p-2.5 text-sm text-bright outline-none placeholder:text-quiet/60 focus:border-accent/50"
+        className="w-full resize-y rounded border border-rule bg-paper p-2.5 text-sm text-ink outline-none placeholder:text-muted/60 focus:border-spine/50"
       />
 
       <div className="flex flex-wrap gap-2">
         <button
           onClick={() => void extract()}
           disabled={busy || !message.trim()}
-          className="rounded bg-accent px-3 py-1.5 text-xs font-medium text-ink disabled:opacity-40"
+          className="rounded bg-spine px-3 py-1.5 text-xs font-medium text-paper disabled:opacity-40"
         >
           {busy ? "reading…" : "What is worth keeping?"}
         </button>
@@ -80,7 +80,7 @@ export function AddView({ onSaved }: { onSaved: () => void }) {
             setResult(null);
             setError(null);
           }}
-          className="rounded border border-line px-3 py-1.5 text-xs text-quiet hover:text-bright"
+          className="rounded border border-rule px-3 py-1.5 text-xs text-muted hover:text-ink"
         >
           clear
         </button>
@@ -91,7 +91,7 @@ export function AddView({ onSaved }: { onSaved: () => void }) {
       {result?.error && <ErrorNote message={result.error} />}
 
       {result && result.candidates.length === 0 && !result.error && (
-        <p className="rounded border border-line bg-surface px-3 py-3 text-xs text-quiet">
+        <p className="rounded border border-rule bg-paper px-3 py-3 text-xs text-muted">
           Nothing worth keeping in that. Silence is a correct and common answer — the alternative is
           storing things you did not mean to store.
         </p>
@@ -99,24 +99,24 @@ export function AddView({ onSaved }: { onSaved: () => void }) {
 
       {result && result.candidates.length > 0 && (
         <div className="space-y-2">
-          <p className="text-[11px] text-quiet">
+          <p className="text-[11px] text-muted">
             Extracted. None of this is stored yet — confirm the ones you want.
           </p>
           {result.candidates.map((c) => {
             const isSaved = saved.has(c.text);
             return (
-              <div key={c.text} className="rounded border border-line bg-surface p-2.5">
-                <p className="text-xs leading-snug text-bright">{c.text}</p>
-                <p className="mt-1 text-[11px] text-quiet">
-                  <span className="text-bright/70">{c.person}</span> · {c.type}
+              <div key={c.text} className="rounded border border-rule bg-paper p-2.5">
+                <p className="text-xs leading-snug text-ink">{c.text}</p>
+                <p className="mt-1 text-[11px] text-muted">
+                  <span className="text-ink/70">{c.person}</span> · {c.type}
                   {c.dueAt && <> · due {c.dueAt}</>} ·{" "}
                   <span className="tabular">{(c.confidence * 100).toFixed(0)}%</span> confident
                 </p>
-                {c.reasoning && <p className="mt-1 text-[11px] italic text-quiet">{c.reasoning}</p>}
+                {c.reasoning && <p className="mt-1 text-[11px] italic text-muted">{c.reasoning}</p>}
                 <button
                   onClick={() => void confirm(c)}
                   disabled={isSaved || busy}
-                  className="mt-1.5 rounded border border-accent/40 px-2 py-1 text-[11px] text-accent disabled:opacity-50"
+                  className="mt-1.5 rounded border border-spine/40 px-2 py-1 text-[11px] text-spine disabled:opacity-50"
                 >
                   {isSaved ? "kept" : "keep this"}
                 </button>

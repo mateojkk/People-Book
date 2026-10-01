@@ -36,6 +36,8 @@ export default function App() {
   const ownership = useOwnership(() => void refreshWho());
   const [accountIdDraft, setAccountIdDraft] = useState("");
   const [modelReady, setModelReady] = useState<boolean | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  const [showStatusCard, setShowStatusCard] = useState(true);
 
   // Is there actually a model behind this?
   //
@@ -86,17 +88,17 @@ export default function App() {
       <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center gap-6 px-4">
         <header>
           <h1 className="text-2xl font-semibold tracking-tight">People Book</h1>
-          <p className="mt-2 text-sm leading-relaxed text-quiet">
+          <p className="mt-2 text-sm leading-relaxed text-muted">
             A private assistant that remembers everyone in your life, you included, and comes to you
             instead of waiting to be asked.
           </p>
         </header>
 
-        <div className="space-y-3 rounded border border-line bg-surface p-4">
-          <p className="text-xs text-quiet">
+        <div className="space-y-3 rounded border border-rule bg-paper p-4">
+          <p className="text-xs text-muted">
             Sign in with a Sui wallet. You will sign a one-time message so we can prove the address
             is yours — and then you create a Walrus Memory account that{" "}
-            <strong className="text-bright">you</strong> own, and grant this app scoped access to it.
+            <strong className="text-ink">you</strong> own, and grant this app scoped access to it.
             You can take that access away on chain at any time, and we will not be able to stop you.
           </p>
 
@@ -108,7 +110,7 @@ export default function App() {
               <button
                 onClick={() => void signIn()}
                 disabled={state.phase === "connecting" || state.phase === "signing"}
-                className="rounded bg-accent px-3 py-1.5 text-xs font-medium text-ink disabled:opacity-50"
+                className="rounded bg-spine px-3 py-1.5 text-xs font-medium text-paper disabled:opacity-50"
               >
                 {state.phase === "signing"
                   ? "check your wallet…"
@@ -120,7 +122,7 @@ export default function App() {
           </div>
 
           {state.phase === "signing" && (
-            <pre className="mono max-h-24 overflow-auto whitespace-pre-wrap rounded bg-ink/60 p-2 text-[10px] text-quiet">
+            <pre className="mono max-h-24 overflow-auto whitespace-pre-wrap rounded bg-paper/60 p-2 text-[10px] text-muted">
               {state.message}
             </pre>
           )}
@@ -138,7 +140,7 @@ export default function App() {
     return (
       <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center gap-5 px-4">
         <h1 className="text-xl font-semibold">One step left</h1>
-        <p className="text-sm leading-relaxed text-quiet">
+        <p className="text-sm leading-relaxed text-muted">
           {who.accountId
             ? "This address already has a Walrus Memory account, so there is nothing to create. It only needs permission to read and write inside it."
             : "This address has no Walrus Memory account yet, so it needs one, then permission to read and write inside it."}{" "}
@@ -148,20 +150,20 @@ export default function App() {
           the whole point of doing it this way.
         </p>
 
-        <ol className="space-y-2 text-xs text-quiet">
+        <ol className="space-y-2 text-xs text-muted">
           {who.accountId ? (
             <li>
-              <strong className="text-bright">1.</strong> Add a delegate key so this app can read
+              <strong className="text-ink">1.</strong> Add a delegate key so this app can read
               and write inside your existing account. You will see the exact key you are granting.
             </li>
           ) : (
             <>
               <li>
-                <strong className="text-bright">1.</strong> Create a Walrus Memory account. The
+                <strong className="text-ink">1.</strong> Create a Walrus Memory account. The
                 account is owned by your address, not by us.
               </li>
               <li>
-                <strong className="text-bright">2.</strong> Add a delegate key so this app can read
+                <strong className="text-ink">2.</strong> Add a delegate key so this app can read
                 and write inside it. You will see the exact key you are granting.
               </li>
             </>
@@ -169,7 +171,7 @@ export default function App() {
         </ol>
 
         {ownership.step !== "idle" && (
-          <p className="rounded border border-line bg-surface px-3 py-2 text-xs text-quiet">
+          <p className="rounded border border-rule bg-paper px-3 py-2 text-xs text-muted">
             {ownership.step === "creating" && "Creating your account… approve in your wallet."}
             {ownership.step === "granting" && who.accountId && "Adding the access grant… approve in your wallet."}
             {ownership.step === "granting" && "Now adding the delegate key… approve in your wallet."}
@@ -178,7 +180,7 @@ export default function App() {
         )}
 
         {ownership.step === "error" && (
-          <p className="text-xs text-quiet">
+          <p className="text-xs text-muted">
             This needs a small amount of SUI for gas. The frictionless version of this step — sign in
             with Google, no wallet, no gas — is on the roadmap and depends on Enoki, which is paid
             and gated. See the README.
@@ -190,7 +192,7 @@ export default function App() {
             <p className="text-xs leading-relaxed text-warn">
               {ownership.message}
             </p>
-            <p className="mt-2 text-[11px] leading-relaxed text-quiet">
+            <p className="mt-2 text-[11px] leading-relaxed text-muted">
               Paste the id, or a link containing it. Find it at{" "}
               <a
                 href="https://memory.walrus.xyz"
@@ -209,12 +211,12 @@ export default function App() {
                 value={accountIdDraft}
                 onChange={(e) => setAccountIdDraft(e.target.value)}
                 placeholder="0x… or paste a link"
-                className="mono min-w-0 flex-1 rounded border border-line bg-ink/60 px-2 py-1.5 text-xs text-bright outline-none placeholder:text-quiet/60 focus:border-accent/50"
+                className="mono min-w-0 flex-1 rounded border border-rule bg-paper/60 px-2 py-1.5 text-xs text-ink outline-none placeholder:text-muted/60 focus:border-spine/50"
               />
               <button
                 onClick={() => void ownership.claimAccountId(accountIdDraft)}
                 disabled={!accountIdDraft.trim()}
-                className="rounded bg-accent px-3 py-1.5 text-xs font-medium text-ink disabled:opacity-40"
+                className="rounded bg-spine px-3 py-1.5 text-xs font-medium text-paper disabled:opacity-40"
               >
                 Use this account
               </button>
@@ -227,7 +229,7 @@ export default function App() {
           <button
             onClick={() => void ownership.start()}
             disabled={!ownership.canStart || ownership.step === "creating" || ownership.step === "granting"}
-            className="rounded bg-accent px-3 py-1.5 text-xs font-medium text-ink disabled:opacity-40"
+            className="rounded bg-spine px-3 py-1.5 text-xs font-medium text-paper disabled:opacity-40"
           >
             {ownership.step === "idle" || ownership.step === "error"
               ? who.accountId
@@ -237,7 +239,7 @@ export default function App() {
           </button>
         </div>
 
-        <a href="/api/health" className="text-xs text-quiet underline decoration-dotted underline-offset-2">
+        <a href="/api/health" className="text-xs text-muted underline decoration-dotted underline-offset-2">
           check the server config
         </a>
       </main>
@@ -250,24 +252,31 @@ export default function App() {
   // column belongs to it; the other views are the same data from another angle
   // and live in the rail instead of competing for the space.
   return (
-    <div className="flex h-screen overflow-hidden bg-ink">
-      <aside className="hidden w-64 shrink-0 flex-col border-r border-line bg-surface lg:flex">
-        <div className="flex items-center gap-2 px-4 py-3.5">
+    <div className="flex h-screen overflow-hidden bg-paper">
+      <aside
+        className={`hidden shrink-0 flex-col border-r border-rule bg-paper transition-all duration-200 lg:flex ${
+          sidebarCollapsed ? "w-14 items-center" : "w-60"
+        }`}
+      >
+        <div className={`flex items-center gap-2 py-3.5 ${sidebarCollapsed ? "justify-center px-2" : "px-4"}`}>
           <Mark />
-          <span className="text-[15px] font-semibold tracking-tight">People Book</span>
+          {!sidebarCollapsed && <span className="text-[15px] font-semibold tracking-tight">People Book</span>}
         </div>
 
-        <div className="px-3 pb-2">
+        <div className={`pb-2 ${sidebarCollapsed ? "w-full px-2" : "px-3"}`}>
           <button
             onClick={() => setTab("talk")}
-            className="flex w-full items-center gap-2.5 rounded-xl border border-line bg-ink px-3 py-2 text-left text-[13.5px] text-quiet transition-colors hover:bg-surface-2"
+            title="New conversation"
+            className={`flex items-center gap-2.5 rounded-xl border border-rule bg-paper text-left text-[13.5px] text-muted transition-colors hover:bg-paper-2 ${
+              sidebarCollapsed ? "h-9 w-9 justify-center p-0" : "w-full px-3 py-2"
+            }`}
           >
             <Icon name="new" />
-            New conversation
+            {!sidebarCollapsed && <span>New conversation</span>}
           </button>
         </div>
 
-        <nav className="px-2">
+        <nav className={`space-y-0.5 ${sidebarCollapsed ? "w-full px-2" : "px-2"}`}>
           {(
             [
               ["talk", "Talk"],
@@ -280,48 +289,89 @@ export default function App() {
               key={key}
               onClick={() => setTab(key)}
               aria-current={tab === key}
-              className="rail-item mb-0.5 flex w-full items-center gap-2.5 px-2.5 py-2 text-left text-[13.5px] text-quiet"
+              title={sidebarCollapsed ? label : undefined}
+              className={`rail-item flex items-center text-muted transition-colors ${
+                sidebarCollapsed
+                  ? "h-9 w-9 justify-center rounded-lg p-0"
+                  : "w-full gap-2.5 px-2.5 py-2 text-left text-[13.5px]"
+              }`}
             >
               <Icon name={key} />
-              {label}
+              {!sidebarCollapsed && <span>{label}</span>}
             </button>
           ))}
         </nav>
 
-        <div className="mt-5 px-4">
-          <p className="text-[11px] font-medium uppercase tracking-wider text-faint">Your memory</p>
-        </div>
-        <StorageNote />
-
-        <div className="mt-auto border-t border-line px-3 py-3">
-          <p className="mono truncate px-1 text-[11px] text-faint">
-            {who.address?.slice(0, 6)}…{who.address?.slice(-4)}
+        {!sidebarCollapsed && (
+          <>
+            <div className="mt-5 px-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-faint">
+            In this book
           </p>
-          <div className="mt-1.5 flex items-center justify-between px-1">
-            <span className="text-[11px] text-faint">Owned by you, on Sui</span>
-            <a
-              href="/api/export"
-              className="text-[11px] text-quiet underline decoration-dotted underline-offset-2 hover:text-bright"
-            >
-              export
-            </a>
+            </div>
+            <StorageNote />
+          </>
+        )}
+
+        <div className="mt-auto flex w-full flex-col border-t border-rule">
+          {!sidebarCollapsed && (
+            <div className="px-4 py-3">
+              <p className="mono truncate text-[11px] text-faint">
+                {who.address?.slice(0, 6)}…{who.address?.slice(-4)}
+              </p>
+              <div className="mt-1 flex items-center justify-between">
+                <span className="text-[11px] text-faint">Owned by you, on Sui</span>
+                <a
+                  href="/api/export"
+                  className="text-[11px] text-muted underline decoration-dotted underline-offset-2 hover:text-ink"
+                >
+                  export
+                </a>
+              </div>
+            </div>
+          )}
+
+          {/* Sidebar collapse/expand toggle button matching inspiration */}
+          <div className={`p-2 flex ${sidebarCollapsed ? "justify-center" : "justify-between items-center px-3"}`}>
+            {sidebarCollapsed ? (
+              <button
+                type="button"
+                onClick={() => setSidebarCollapsed(false)}
+                className="grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-paper-2 hover:text-ink"
+                title="Expand sidebar"
+              >
+                <SidebarToggleIcon className="h-4 w-4" />
+              </button>
+            ) : (
+              <>
+                <span className="text-[11px] text-faint">Collapse</span>
+                <button
+                  type="button"
+                  onClick={() => setSidebarCollapsed(true)}
+                  className="grid h-7 w-7 place-items-center rounded-lg text-muted hover:bg-paper-2 hover:text-ink"
+                  title="Collapse sidebar"
+                >
+                  <SidebarToggleIcon className="h-4 w-4" />
+                </button>
+              </>
+            )}
           </div>
         </div>
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-line-soft px-5 py-3 lg:hidden">
+      <div className="relative flex min-w-0 flex-1 flex-col">
+        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-rule-soft px-5 py-3 lg:hidden">
           <div className="flex items-center gap-2">
             <Mark />
             <span className="text-[14px] font-semibold">People Book</span>
           </div>
-          <a href="/api/export" className="text-[12px] text-quiet">
+          <a href="/api/export" className="text-[12px] text-muted">
             export
           </a>
         </header>
 
         {modelReady === false && (
-          <div className="border-b border-line bg-warn/10 px-5 py-2.5">
+          <div className="border-b border-rule bg-warn/10 px-5 py-2.5">
             <p className="text-[13px] leading-5 text-warn">
               <strong className="font-medium">No model configured.</strong> GROQ_API_KEY is not set,
               so nothing said here is remembered and replies are placeholders. Set it and restart.
@@ -347,6 +397,74 @@ export default function App() {
             </div>
           )}
         </main>
+
+        {/* Floating onchain status card matching reference UI in bottom-right */}
+        {showStatusCard && who?.signedIn ? (
+          <aside className="fixed bottom-5 right-5 z-40 w-72 rounded-2xl border border-rule bg-paper-2/95 p-4 shadow-2xl backdrop-blur-md transition-all">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-2">
+                <Mark className="h-5 w-5" />
+                <span className="text-[13px] font-semibold text-ink">Walrus Memory</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowStatusCard(false)}
+                className="grid h-6 w-6 place-items-center rounded-md text-muted hover:bg-paper-3 hover:text-ink"
+                title="Dismiss status card"
+              >
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                  <path d="M3 3l10 10M13 3l-10 10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
+            <p className="mt-2 text-xs leading-relaxed text-muted">
+              Save and sync your life memories. Owned by your Sui wallet and revocable onchain anytime.
+            </p>
+
+            <div className="mt-3 rounded-xl border border-rule bg-paper/70 p-2.5">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-faint">Wallet</span>
+                <span className="mono text-ink">
+                  {who.address ? `${who.address.slice(0, 6)}…${who.address.slice(-4)}` : "—"}
+                </span>
+              </div>
+              <div className="mt-1.5 flex items-center justify-between text-[11px]">
+                <span className="text-faint">Status</span>
+                <span className="flex items-center gap-1 font-medium text-spine">
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-spine" />
+                  Active delegate
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-3 flex gap-2">
+              <a
+                href="/api/export"
+                className="flex-1 rounded-xl border border-rule bg-paper py-1.5 text-center text-xs font-medium text-muted transition-colors hover:bg-paper-3 hover:text-ink"
+              >
+                Export ledger
+              </a>
+              <button
+                type="button"
+                onClick={() => setTab("book")}
+                className="flex-1 rounded-xl bg-ink py-1.5 text-center text-xs font-medium text-paper transition-opacity hover:opacity-90"
+              >
+                View book
+              </button>
+            </div>
+          </aside>
+        ) : (
+          who?.signedIn && (
+            <button
+              type="button"
+              onClick={() => setShowStatusCard(true)}
+              className="fixed bottom-5 right-5 z-40 grid h-10 w-10 place-items-center rounded-full border border-rule bg-paper-2 text-muted shadow-lg hover:border-rule-soft hover:text-ink"
+              title="Show Walrus Memory status"
+            >
+              <Mark className="h-5 w-5" />
+            </button>
+          )
+        )}
       </div>
     </div>
   );
@@ -385,11 +503,11 @@ function StorageNote() {
 
   return (
     <div className="px-4 py-2.5">
-      <p className="text-[11.5px] leading-4 text-quiet">
+      <p className="text-[11.5px] leading-4 text-muted">
         {state === "loading" && "Reading your book…"}
         {state === "ok" && count !== null && (
           <>
-            <span className="tabular font-medium text-bright">{count}</span> encrypted blobs in
+            <span className="tabular font-medium text-ink">{count}</span> encrypted blobs in
             Walrus Memory
           </>
         )}
@@ -399,11 +517,25 @@ function StorageNote() {
   );
 }
 
-function Mark() {
+function Mark({ className = "h-5 w-5 text-spine" }: { className?: string }) {
   return (
-    <span className="grid h-5 w-5 place-items-center rounded-md bg-accent text-[11px] font-bold text-ink">
-      P
-    </span>
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor">
+      <path
+        d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M4.93 19.07l14.14-14.14"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+      />
+      <circle cx="12" cy="12" r="3.5" fill="currentColor" />
+    </svg>
+  );
+}
+
+function SidebarToggleIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 16 16" fill="none" stroke="currentColor">
+      <rect x="2" y="2.5" width="12" height="11" rx="2" strokeWidth="1.3" />
+      <path d="M6 2.5v11" strokeWidth="1.3" />
+    </svg>
   );
 }
 

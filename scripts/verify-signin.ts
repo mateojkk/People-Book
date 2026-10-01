@@ -402,37 +402,33 @@ check("undo is refused cleanly, not a crash", undoUnknown.status === 403, undoUn
 // The regression that mattered most, and it was invisible for a long time: with an
 // empty ledger the allowed-person set was {"you"}, so every candidate about anyone
 // new was discarded. People Book could only learn people it already knew.
-const { capture } = await import("../api/lib/capture.ts");
-const LINE = "Ravi's daughter is called Nila.";
-const extraction = await capture(LINE, []);
+//
+// Tested against the rule rather than against Groq. Asking the live model whether it
+// felt like extracting something makes this fail whenever it returns nothing, which
+// is roughly a coin toss and has nothing to do with the bug being guarded.
+section("who a memory may be attributed to");
+
+const { isAttributable } = await import("../api/lib/capture.ts");
+
+const known = new Set(["ravi"]);
+check("someone already in the book is allowed", isAttributable("Ravi", known, ""));
+check("someone named in this message is allowed, even when new", isAttributable("Nila", known, "ravi's daughter is called nila."));
+check("a first ever mention is allowed", isAttributable("Mara", new Set(), "mara's birthday is the 14th"));
+check("the user is allowed", isAttributable("you", new Set(), "I need to call her"));
+
+// The follow-up case that made this look broken: almost nobody repeats a name.
 check(
-  "a person mentioned for the first time is extracted at all",
-  extraction.candidates.length > 0,
-  extraction.candidates,
-);
-check(
-  "and it is someone named in that message, not a carried-over book",
-  extraction.candidates.length > 0 &&
-    extraction.candidates.every((c) => LINE.toLowerCase().includes(c.person.toLowerCase())),
-  extraction.candidates.map((c) => c.person),
+  "a person named only in an earlier turn is allowed",
+  isAttributable("Mara", new Set(), "and she's allergic to shellfish.\nmara's birthday is the 14th"),
 );
 
-// Deliberately not asserting a specific person: the model returned both Ravi and
-// Nila on one call and only Nila on the next, at temperature 0. Asserting "Ravi"
-// would make this suite flaky for a reason that has nothing to do with the bug it
-// guards. What is being guarded is that a new name is not silently discarded.
-
-// …while an invented person is still refused, which was the point of the filter.
-// The rule is that a recorded person must be named in the message or already in
-// the book. Nila counts: she is named, and she is a person in this user's life.
-const said = "Ravi's daughter is called Nila.";
-const invented = await capture(said, ["Someone Else"]);
+// ...and the two that got through before.
+check("a pronoun is not a person", !isAttributable("she", new Set(), "and she's allergic to shellfish"));
+check("nor 'he'", !isAttributable("he", known, "he said he'd call"));
+check("and not 'they'", !isAttributable("they", known, "they are coming"));
 check(
-  "only people named in the message or already known are recorded",
-  invented.candidates.every(
-    (c) => ["you", "someone else"].includes(c.person.toLowerCase()) || said.toLowerCase().includes(c.person.toLowerCase()),
-  ),
-  invented.candidates.map((c) => c.person),
+  "an invented person is refused",
+  !isAttributable("Bartholomew", known, "Ravi's daughter is called Nila."),
 );
 
 console.log("");

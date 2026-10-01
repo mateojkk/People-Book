@@ -65,6 +65,29 @@ function asString(v: unknown): string | undefined {
 }
 
 /**
+ * Whether a memory may be attributed to this person.
+ *
+ * Exported and tested on its own because it is the guard that stopped two real
+ * bugs -- dropping every first mention of anyone, then letting the pronoun "she"
+ * through because "she" really is in the sentence. Asserting it through the live
+ * model made the suite fail whenever Groq returned nothing, which is a coin toss
+ * we do not control; the rule itself is deterministic and is what matters.
+ */
+export function isAttributable(person: string, allowed: ReadonlySet<string>, said: string): boolean {
+  const name = person.toLowerCase().trim();
+  // The user is always a valid subject -- every message is addressed to them. Not
+  // left to the caller to remember, because forgetting it silently drops every
+  // memory the user states about themselves.
+  if (name === "you") return true;
+  // A pronoun is not a person. Observed from the live model on "and she's
+  // allergic to shellfish", which it filed under a person called "she" -- and the
+  // name-in-the-message rule would wave that through, because "she" is in the
+  // message. That writes a memory attributed to a non-person.
+  if (PRONOUNS.has(name)) return false;
+  return allowed.has(name) || said.includes(name);
+}
+
+/**
  * Words that can stand in for a person but are not one.
  *
  * "you" is deliberately absent: the user is a real subject in this book, and every
@@ -171,17 +194,7 @@ export async function capture(
 
   try {
     const raw = await extractRaw(message, knownPeople, history);
-    const candidates = normalise(raw).filter((c) => {
-      const person = c.person.toLowerCase().trim();
-      // A pronoun is not a person. Observed from the live model on a follow-up
-      // like "and she's allergic to shellfish", which it happily filed under a
-      // person called "she" -- and the name-in-the-message rule below would wave it
-      // through, because "she" really is in the message. That writes a memory
-      // attributed to a non-person, which is exactly the kind of junk the book
-      // cannot afford.
-      if (PRONOUNS.has(person) && person !== "you") return false;
-      return allowed.has(person) || said.includes(person);
-    });
+    const candidates = normalise(raw).filter((c) => isAttributable(c.person, allowed, said));
     return { candidates };
   } catch (error) {
     return {

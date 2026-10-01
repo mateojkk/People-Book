@@ -19,7 +19,7 @@ interface MemoriesResponse {
 }
 
 const CONFIDENCE_STYLE: Record<string, string> = {
-  confirmed: "border-accent/30 text-accent",
+  confirmed: "border-spine/30 text-spine",
   inferred: "border-warn/30 text-warn",
 };
 
@@ -41,7 +41,7 @@ export function LedgerView({ onForget }: { onForget: (id: string) => void }) {
   }, [load]);
 
   if (error) return <ErrorNote message={error} />;
-  if (!data) return <p className="text-sm text-quiet">Loading your book…</p>;
+  if (!data) return <p className="text-sm text-muted">Loading your book…</p>;
 
   const shown = showInferred ? data.memories : data.memories.filter((m) => m.confidence === "confirmed");
   const inferredCount = data.memories.filter((m) => m.confidence === "inferred").length;
@@ -49,11 +49,11 @@ export function LedgerView({ onForget }: { onForget: (id: string) => void }) {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-medium text-quiet">
+        <h2 className="text-sm font-medium text-muted">
           Your book · <span className="tabular">{data.memories.length}</span>
         </h2>
         {inferredCount > 0 && (
-          <label className="flex cursor-pointer items-center gap-2 text-xs text-quiet">
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-muted">
             <input
               type="checkbox"
               checked={showInferred}
@@ -85,23 +85,23 @@ export function LedgerView({ onForget }: { onForget: (id: string) => void }) {
       ) : (
         <ul className="space-y-1.5">
           {shown.map((m) => (
-            <li key={m.id} className="rounded border border-line bg-surface px-2.5 py-2">
+            <li key={m.id} className="rounded border border-rule bg-paper px-2.5 py-2">
               <div className="flex items-start justify-between gap-2">
-                <p className="text-xs leading-snug text-bright">{m.text}</p>
+                <p className="text-xs leading-snug text-ink">{m.text}</p>
                 <span
                   className={`mono shrink-0 rounded border px-1.5 py-0.5 text-[10px] uppercase tracking-wider ${CONFIDENCE_STYLE[m.confidence]}`}
                 >
                   {m.confidence}
                 </span>
               </div>
-              <p className="mt-1 text-[11px] text-quiet">
-                <span className="text-bright/70">{m.person}</span> · {m.type}
+              <p className="mt-1 text-[11px] text-muted">
+                <span className="text-ink/70">{m.person}</span> · {m.type}
                 {m.status !== "active" && <> · {m.status}</>}
                 {m.dueAt && <> · due {m.dueAt}</>}
                 {m.occurredAt && <> · {m.occurredAt}</>}
               </p>
               {m.verbatim && (
-                <p className="mt-1 text-[11px] italic text-quiet">“{m.verbatim}”</p>
+                <p className="mt-1 text-[11px] italic text-muted">“{m.verbatim}”</p>
               )}
               <div className="mt-1.5 flex gap-3">
                 {m.type === "promise" && m.status === "open" && (
@@ -110,14 +110,14 @@ export function LedgerView({ onForget }: { onForget: (id: string) => void }) {
                       await api.post(`/api/memories/${m.id}/resolve`, { status: "kept" });
                       await load();
                     }}
-                    className="text-[11px] text-accent underline decoration-dotted underline-offset-2"
+                    className="text-[11px] text-spine underline decoration-dotted underline-offset-2"
                   >
                     I did it
                   </button>
                 )}
                 <button
                   onClick={() => onForget(m.id)}
-                  className="text-[11px] text-quiet underline decoration-dotted underline-offset-2 hover:text-stop"
+                  className="text-[11px] text-muted underline decoration-dotted underline-offset-2 hover:text-stop"
                 >
                   forget
                 </button>
