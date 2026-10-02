@@ -11,6 +11,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { createDAppKit } from "@mysten/dapp-kit-core";
 import { DAppKitProvider } from "@mysten/dapp-kit-react";
+import { BrowserRouter } from "react-router-dom";
 import { SuiGrpcClient } from "@mysten/sui/grpc";
 import App from "./App.tsx";
 import "./index.css";
@@ -33,7 +34,12 @@ if (!root) throw new Error("No #root element. index.html looks wrong.");
 createRoot(root).render(
   <StrictMode>
     <DAppKitProvider dAppKit={dAppKit}>
-      <App />
+      {/* Inside the provider: the router reads nothing from it, but the sign-in
+          flow does, and a router outside the app would remount the tree above
+          dApp Kit on every navigation. */}
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
     </DAppKitProvider>
   </StrictMode>,
 );

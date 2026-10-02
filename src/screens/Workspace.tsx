@@ -55,6 +55,7 @@ function Notice({ onOpen }: { onOpen: () => void }) {
 }
 
 import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { ChatView } from "../components/ChatView.tsx";
 import { NudgeView } from "../components/NudgeView.tsx";
 import { NotificationsView } from "../components/NotificationsView.tsx";
@@ -71,8 +72,6 @@ import { Mark } from "./Landing.tsx";
  * rather than competing for the space.
  */
 export function Workspace({
-  tab,
-  setTab,
   address,
   onDisconnect,
   version,
@@ -80,8 +79,6 @@ export function Workspace({
   error,
   modelReady,
 }: {
-  tab: Tab;
-  setTab: (t: Tab) => void;
   address?: string;
   /** Ends the session and unplugs the wallet. See the note below. */
   onDisconnect: () => void;
@@ -91,6 +88,19 @@ export function Workspace({
   modelReady: boolean | null;
 }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // The tabs are routes, not state. They used to be `useState`, which meant the
+  // URL could not tell you where you were: the back button walked out of the app
+  // instead of back to the chat, and reloading a page you had opened on
+  // Notifications always gave you the chat.
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const tab: Tab = pathname.endsWith("/notifications")
+    ? "notifications"
+    : pathname.endsWith("/book")
+      ? "book"
+      : "talk";
+  const setTab = (t: Tab) => void navigate(t === "talk" ? "/app" : `/app/${t}`);
   return (
     <div className="flex h-screen overflow-hidden bg-base">
       <aside

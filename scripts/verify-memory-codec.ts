@@ -13,6 +13,7 @@ import {
   makeMemory,
   makeMemoryId,
   parseMemory,
+  reviseMemory,
   serializeMemory,
   toDisplayText,
   todayISO,
@@ -192,6 +193,41 @@ check("ids are unique", ids.size === 500);
 check("ids are prefixed", [...ids].every((id) => id.startsWith("mem_")));
 check("todayISO is a bare date", /^\d{4}-\d{2}-\d{2}$/.test(todayISO()));
 check("todayISO matches the supplied instant", todayISO(new Date("2026-10-09T23:59:00.000Z")) === "2026-10-09");
+
+// ─── Corrections: the instruction, and the reason ────────────────────────────
+//
+// The reason is the entire point of the type, and it is the field most likely to
+// rot silently: absent from a serialiser, an extraction drops it, or the ranker
+// treats the memory as trivia. Every one of those produces a green build and a
+// product that forgets what you told it.
+section("a correction keeps its reason");
+{
+  const c = makeMemory({
+    person: "you",
+    type: "correction",
+    text: "Do not use Inter.",
+    reason: "It is a wide face and the measure breaks.",
+  });
+  check("it round-trips through storage", parseMemory(serializeMemory(c))?.reason === c.reason);
+
+  const bare = makeMemory({ person: "you", type: "correction", text: "Stop using emoji." });
+  check(
+    "an absent reason is stored as absent, not invented",
+    parseMemory(serializeMemory(bare))?.reason === undefined,
+  );
+
+  const changed = reviseMemory(c, { reason: "Fine now, it was a one-off." });
+  check("a revised correction can change its reason", parseMemory(serializeMemory(changed))?.reason === changed.reason);
+  check("and keeps the original's id, so it supersedes rather than forks", changed.id === c.id && changed.rev === c.rev + 1);
+
+  // Serialisation order is fixed so two blobs can be diffed. Adding a field must
+  // not reshuffle the bytes of every memory written before it.
+  check("bytes stay deterministic", serializeMemory(c) === serializeMemory(makeMemory({ ...c, id: c.id, now: new Date(c.createdAt) })));
+
+  // A hand-edited or foreign blob with a non-string reason must be refused whole.
+  const hostile = serializeMemory(c).replace(/"reason":"[^"]*"/, '"reason":{"evil":true}');
+  check("a reason that is not a string is refused, not coerced", parseMemory(hostile) === null);
+}
 
 // ─── Result ─────────────────────────────────────────────────────────────────
 console.log("");

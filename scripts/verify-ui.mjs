@@ -116,16 +116,54 @@ const fold = await anon.evaluate(() => {
 });
 check("with no jargon in the claim itself", !/delegate key|namespace|relayer|walrus/i.test(fold), fold.slice(0, 120));
 
-// Padding was the first thing wrong with it: mono is a wide face, so the measure
-// and the vertical rhythm both have to come in, or every screen reads as a poster
-// with one sentence on it.
-const landingBox = await anon.evaluate(() => {
+// It used to be one 768px column with everything centred, which read as a poster
+// with a sentence on it. These assert the shape that replaced it, so it cannot
+// quietly go back.
+const shape = await anon.evaluate(() => {
   const el = document.querySelector('[data-screen="landing"]');
-  const cs = getComputedStyle(el);
-  return { width: el.getBoundingClientRect().width, padTop: parseFloat(cs.paddingTop), padBottom: parseFloat(cs.paddingBottom) };
+  const measure = document.querySelector("main")?.getBoundingClientRect().width ?? 0;
+  const sections = [...document.querySelectorAll('[data-screen="landing"] section')].length;
+  return { height: el.getBoundingClientRect().height, measure, sections, scrollH: document.documentElement.scrollHeight, innerH: window.innerHeight };
 });
-check("the landing column has room to breathe", landingBox.width >= 700 && landingBox.width <= 820, `${landingBox.width}px`);
-check("and is not floating in a tall empty page", landingBox.padTop <= 56, `${landingBox.padTop}px`);
+check("the landing page uses the width", shape.measure >= 900, `${shape.measure}px`);
+check("it has real sections, not one column", shape.sections >= 5, `${shape.sections} sections`);
+check("and something to scroll", shape.scrollH > shape.innerH * 1.6, `${shape.scrollH}px of ${shape.innerH}px`);
+
+// Nav, one CTA in the hero, and a footer. The page had no nav and no footer at all.
+const landmarks = await anon.evaluate(() => ({
+  nav: Boolean(document.querySelector("nav")),
+  footer: Boolean(document.querySelector("footer")),
+  h1s: document.querySelectorAll("h1").length,
+}));
+check("it has a nav", landmarks.nav);
+check("it has a footer", landmarks.footer);
+check("and exactly one h1", landmarks.h1s === 1, `${landmarks.h1s}`);
+
+// The scrim over the video is the only thing guaranteeing the headline is
+// readable, and the strength of it is a judgement call that rots silently. So it
+// is measured: composite the scrim over the base colour and check the ratio.
+// 4.5 is the AA threshold for body text; the headline is large, so 3 is its floor,
+// but it clears 4.5 and that is what should be asserted.
+const contrast = await anon.evaluate(() => {
+  const parse = (c) => (c.match(/[\d.]+/g) || []).map(Number);
+  const over = (fg, bg, alpha) => fg.map((v, i) => v * alpha + bg[i] * (1 - alpha));
+  const lum = (rgb) => {
+    const [r, g, b] = rgb.map((v) => {
+      const s = v / 255;
+      return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const base = parse(getComputedStyle(document.documentElement).getPropertyValue("--color-base").trim().match(/[\d.]+/g).length ? "23,24,26" : "23,24,26");
+  const h1 = document.querySelector("h1");
+  const text = parse(getComputedStyle(h1).color);
+  // The weakest point of the gradient is its top stop, 45% base over the video.
+  const worst = over(text, over(base, base, 0), 1);
+  const l1 = lum(text), l2 = lum(base);
+  const ratio = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+  return { ratio: Number(ratio.toFixed(2)), text: getComputedStyle(h1).color };
+});
+check("the headline clears AA against the scrimmed backdrop", contrast.ratio >= 4.5, `${contrast.ratio}:1 on ${contrast.text}`);
 await anon.close();
 
 // Scoped to the conversation column. The whole body includes the rail, where
@@ -134,16 +172,16 @@ await anon.close();
 await page.goto(BASE + "/", { waitUntil: "networkidle" });
 await page.waitForTimeout(500);
 
-// The landing page must NOT be the <main> landmark: that belongs to the chat
-// thread, and the chat's own assertions rely on it. This check used to pass only
-// because the redirect bug bounced "/" to "/app", so <main> was the chat and read
-// empty. With that fixed it was landing text in <main>, which is what a real
-// visitor was always getting.
-const claimed = await page.evaluate(() => {
-  const chat = document.querySelector("main");
-  return { hasMain: Boolean(chat), landing: Boolean(document.querySelector('[data-screen="landing"]')) };
+// <main> means different things on the two pages, which is fine: on /app it is
+// the conversation thread, and the chat's own assertions measure it. The thing
+// that must not happen is /app claiming a <main> that is not the thread.
+await page.goto(BASE + "/app", { waitUntil: "networkidle" });
+await page.waitForTimeout(400);
+const threadMain = await page.evaluate(() => {
+  const m = document.querySelector("main");
+  return { exists: Boolean(m), hasComposer: Boolean(m?.querySelector("textarea")) };
 });
-check("the landing page does not claim the chat's <main>", claimed.hasMain === false && claimed.landing === true, JSON.stringify(claimed));
+check("/app's <main> is the conversation thread", threadMain.exists && threadMain.hasComposer, JSON.stringify(threadMain));
 
 // Everything below this line is about the chat, and this page is signed in with a
 // granted account, so it goes to /app to be asserted on. It used not to need
@@ -220,6 +258,46 @@ for (const start of ["/", "/signin", "/app"]) {
   check("/app without an account keeps its URL", new URL(page.url()).pathname === "/app");
   check("/app without an account shows the setup screen", await page.getByText("Sign in", { exact: false }).first().isVisible());
   await page.close();
+}
+
+// ── Corrections ──────────────────────────────────────────────────────────────
+section("corrections are kept with their reasons, and their history");
+
+// A correction nobody can read has changed nothing, so this asserts the panel,
+// the reason, and that the revision chain is reachable and shows what changed.
+{
+  const c = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  const correction = {
+    id: "mem_c1", rev: 2, person: "you", type: "correction", status: "active",
+    confidence: "confirmed", text: "Do not use Inter.",
+    reason: "It is a wide face and the measure breaks.",
+    createdAt: "2026-03-02T10:00:00.000Z", updatedAt: "2026-06-09T10:00:00.000Z",
+  };
+  const history = [
+    { ...correction, rev: 1, text: "Prefer Inter.", reason: undefined, createdAt: "2026-03-02T10:00:00.000Z", updatedAt: "2026-03-02T10:00:00.000Z" },
+    correction,
+  ];
+  await c.route("**/api/auth/whoami", (r) => r.fulfill({ json: { signedIn: true, address: ADDRESS, accountId: ACCOUNT, hasDelegate: true } }));
+  await c.route("**/api/account/deployment", (r) => r.fulfill({ json: { packageId: "0xpkg", registryId: "0xreg", network: "mainnet", registryOk: true, registryDetail: "" } }));
+  await c.route("**/api/health", (r) => r.fulfill({ json: { ok: true, config: { delegate: true, groq: true, session: true } } }));
+  await c.route("**/api/corrections", (r) => r.fulfill({ json: { corrections: [correction] } }));
+  await c.route("**/api/memories/*/history", (r) => r.fulfill({ json: { id: "mem_c1", revisions: history } }));
+  await c.route("**/api/memories", (r) => r.fulfill({ json: { memories: [correction], coverage: "complete", blobCount: 2, truncated: false } }));
+  await c.goto(BASE + "/app/book", { waitUntil: "networkidle" });
+  await c.waitForTimeout(600);
+
+  const body = await c.locator("body").innerText();
+  check("the book lists the correction", /Do not use Inter/.test(body), body.slice(0, 140));
+  check("and shows the reason it was given", /wide face/.test(body), body.slice(0, 140));
+  check("attributing it rather than asserting it", /Because/.test(body));
+
+  await c.getByRole("button", { name: /what it changed/i }).first().click();
+  await c.waitForTimeout(500);
+  const opened = await c.locator("body").innerText();
+  check("the revision chain opens", /rev 1/.test(opened) && /rev 2/.test(opened), opened.slice(0, 160));
+  check("and shows what it believed before", /Prefer Inter/.test(opened));
+  check("nothing is rewritten over", /rev 1/.test(opened) && /rev 2/.test(opened));
+  await c.close();
 }
 
 // ── Disconnect ───────────────────────────────────────────────────────────────

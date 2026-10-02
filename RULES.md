@@ -196,6 +196,35 @@ added has to be used by something in `src/` or it comes out.
 
 ---
 
+## 20. Never commit a binary asset. Link the URL.
+
+Asked once directly, and worth writing down because the instinct is wrong. A
+landing background video arrived as a 33MB CloudFront mp4 and the reflex was to
+download it into `public/`, compress it, and commit it. Do not.
+
+A 33MB video in the repository is bad for the clone, bad for the deploy bundle,
+and bad for every future `git` operation, and none of that buys anything: the
+file is already on a CDN with a stable URL. Reference the URL directly in the
+markup. Compression is the CDN's job, not the repository's.
+
+The general rule: **anything that is not source goes in `src/` as text. Fonts,
+video, images, fixtures — link them, do not carry them.** The only binaries that
+belong in the repo are the ones this project generates and must test against.
+
+---
+
+## 21. Decorative motion must never cost the reader their text
+
+A background video behind the landing headline is allowed, with three conditions:
+it is decorative, so it is `aria-hidden`; it is muted and `playsInline`, because
+browsers refuse to autoplay otherwise; and it sits under an overlay strong enough
+that the headline keeps its contrast against whatever the brightest frame is.
+
+And honour `prefers-reduced-motion`. Someone who has asked their operating system
+for less movement gets the static gradient, not the video.
+
+---
+
 ## The one above the others
 
 Everything here is a variation of it: **the gap between what was verified and

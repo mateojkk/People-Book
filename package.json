@@ -33,7 +33,8 @@
     "@mysten/sui": "^2.33.2",
     "hono": "^4.13.12",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.18.4"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.1",

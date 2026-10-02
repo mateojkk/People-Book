@@ -264,10 +264,18 @@ async function composeReply(args: {
     return fallbackReply(args);
   }
 
+  // Corrections are not facts and must not be listed among them. A rule that
+  // arrives in a list of things-that-are-true reads as trivia, and the model will
+  // happily contradict it. So they are pulled out and given their own block,
+  // stated as binding, with the user's own reason attached -- the reason is what
+  // makes the rule recognisable when it comes back in a different costume.
+  const corrections = args.memories.filter((m) => m.type === "correction");
   const ledger = args.memories
+    .filter((m) => m.type !== "correction")
     .slice(0, 40)
     .map((m) => `- ${m.person} | ${m.type} | ${m.text}`)
     .join("\n");
+  const standing = formatCorrections(corrections);
 
   try {
     const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -278,7 +286,7 @@ async function composeReply(args: {
         temperature: 0.4,
         stream: Boolean(args.onDelta),
         messages: [
-          { role: "system", content: REPLY_SYSTEM },
+          { role: "system", content: REPLY_SYSTEM + standing },
           {
             role: "user",
             content: [
@@ -388,6 +396,37 @@ Rules:
 - If the message is just chat, reply like a person who is paying attention. Do not force a memory out of it.
 - Do not invent facts. Everything you assert must come from the memories given to you.
 - You are continuing a conversation, not starting one. Resolve "her", "him", "it", "what about Dev?" against the turns above. If it is genuinely ambiguous, ask one short question rather than guessing.`;
+
+/**
+ * Renders the user's standing corrections as binding rules.
+ *
+ * Appended to the system prompt rather than mixed into the ledger, because that
+ * is the difference between a rule and a piece of trivia. It is also the only
+ * place a correction can pay off: a stored correction nobody is shown changes
+ * nothing, which is the difference between a memory system and a filing cabinet.
+ *
+ * Returns an empty string when there are none, so the common case costs one
+ * concat on an unchanged constant.
+ */
+export function formatCorrections(corrections: readonly PersonMemory[]): string {
+  if (!corrections.length) return "";
+
+  const lines = corrections.map((c) => {
+    // The reason is quoted as the user gave it. Without it, a bare instruction
+    // gets quietly ignored the first time it looks like it does not apply.
+    const why = c.reason ? ` Reason given: "${c.reason}"` : "";
+    return `- ${c.text}${why}`;
+  });
+
+  return `
+
+STANDING CORRECTIONS -- these are rules the user has given you about how to work.
+They are binding and they outrank your own defaults, including any preference you
+would otherwise assume. Follow them even when the current request seems to call
+for something else; if following one and the request genuinely conflict, say so
+in one sentence rather than silently overriding the user.
+${lines.join("\n")}`;
+}
 
 /**
  * What to say when the model is unavailable.

@@ -121,7 +121,21 @@ async function withDeadline<T>(work: Promise<T>, ms: number, what: string): Prom
  */
 const ENUMERATION_TTL_MS = 15_000;
 
-type Enumeration = { memories: PersonMemory[]; coverage: "complete" | "partial" };
+/**
+ * `all` is every revision of every memory, uncollapsed. `memories` is the same
+ * set folded down to the latest revision of each id.
+ *
+ * Both are kept because they answer different questions: "what does it know" wants
+ * `memories`, and "what did it used to believe, and when did that change" wants
+ * `all`. Carrying both out of one enumeration means history costs no extra
+ * requests, which is the difference between a feature that ships and one that is
+ * always one query away from being cut.
+ */
+type Enumeration = {
+  all: PersonMemory[];
+  memories: PersonMemory[];
+  coverage: "complete" | "partial";
+};
 const enumerationCache = new Map<string, { at: number; value: Enumeration }>();
 const enumerationsInFlight = new Map<string, Promise<Enumeration>>();
 
@@ -281,7 +295,7 @@ export class PeopleBookStore {
     }
   }
 
-  private async enumerate(): Promise<{ memories: PersonMemory[]; coverage: "complete" | "partial" }> {
+  private async enumerate(): Promise<Enumeration> {
     const key = `${this.accountId}:${this.namespace}`;
     const cached = enumerationCache.get(key);
     if (cached && Date.now() - cached.at < ENUMERATION_TTL_MS) return cached.value;
@@ -331,7 +345,38 @@ export class PeopleBookStore {
 
     const collapsed = collapseById(parsed).filter(isLive);
     collapsed.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    return { memories: collapsed, coverage: failed > 0 ? "partial" : "complete" };
+    return { all: parsed, memories: collapsed, coverage: failed > 0 ? "partial" : "complete" };
+  }
+
+  /**
+   * Every revision of one memory, oldest first.
+   *
+   * `listLive` folds each id down to its latest revision, which is correct for
+   * reading and throws the rest away. Those revisions are not history on our side
+   * -- they are separate immutable blobs on chain, one per write, keyed
+   * `${id}:${rev}`, and they stay there after a correction. So the chain of what
+   * was believed, and when it changed, is sitting there already.
+   *
+   * This is what makes a correction inspectable rather than merely stored: you can
+   * ask what it thought in March and get the March answer, not the current one.
+   */
+  async listHistory(id: string): Promise<PersonMemory[]> {
+    const { all } = await this.enumerate();
+    return all
+      .filter((m) => m.id === id)
+      .sort((a, b) => a.rev - b.rev);
+  }
+
+  /**
+   * Every live correction, as rules rather than facts.
+   *
+   * Separate from listLive on purpose. The ledger renders these among other
+   * people's facts, which is where they get read as trivia; the prompt needs them
+   * grouped and labelled as binding.
+   */
+  async listCorrections(): Promise<PersonMemory[]> {
+    const { memories } = await this.listLive();
+    return memories.filter((m) => m.type === "correction");
   }
 
   /**

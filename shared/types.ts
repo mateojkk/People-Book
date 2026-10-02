@@ -25,7 +25,15 @@ export type MemoryType =
   /** How to be with someone: "call her, don't text", "he'll ask about the job". */
   | "howto"
   /** Current state that supersedes older facts: "Maya now works at Initech". */
-  | "update";
+  | "update"
+  /**
+   * A standing instruction about how the ASSISTANT should work, addressed to
+   * `you`. "Use JetBrains Mono, not Inter", "don't ask me before editing files".
+   *
+   * Separate from `howto`, which is how to be with a person. This is how to be
+   * with me, and it is the one type that exists because the user is the subject.
+   */
+  | "correction";
 
 /**
  * Promise lifecycle. `open` is the only status the initiation engine surfaces —
@@ -97,6 +105,20 @@ export interface PersonMemory {
   /** Id of a memory this one replaces. Keeps history instead of overwriting. */
   supersedes?: string;
   /**
+   * WHY the user gave the instruction. Corrections only.
+   *
+   * This is the whole point of the type. A bare instruction -- "no Inter" -- gets
+   * violated anyway, because the next time the situation looks slightly
+   * different the instruction does not obviously apply and the safe reading is
+   * that it no longer holds. The reason is what makes it survive: "no Inter,
+   * because it's a wide face and the measure breaks" is recognisably the same
+   * problem when it comes back as "no Inter, the type is too wide".
+   *
+   * Optional, because the user does not always give one. An absent reason is
+   * stored as absent rather than invented.
+   */
+  reason?: string;
+  /**
    * Tombstone marker. MemWal ships no delete, so forgetting writes a new blob
    * with the same id and `deleted: true`, and every read filters tombstones out.
    * See api/lib/store.ts > tombstone().
@@ -122,6 +144,7 @@ export const MEMORY_TYPES: readonly MemoryType[] = [
   "taboo",
   "howto",
   "update",
+  "correction",
 ];
 
 // ─── Initiation ──────────────────────────────────────────────────────────────
@@ -212,6 +235,8 @@ export interface MemoryCandidate {
   dueAt?: string;
   /** "MM-DD" for a date that recurs every year, such as a birthday. */
   anniversary?: string;
+  /** The writer's reason for a correction. Only for type "correction". */
+  reason?: string;
   /** Why the model thinks this is worth keeping. Shown so the user can judge. */
   reasoning: string;
   /**

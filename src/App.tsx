@@ -5,7 +5,7 @@
  * plain, because the things it has to prove are not visual.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ConnectButton, useSignIn } from "./lib/auth.ts";
 import { useOwnership } from "./lib/ownership.ts";
 import { api } from "./lib/api.ts";
@@ -15,6 +15,8 @@ import { Workspace } from "./screens/Workspace.tsx";
 import { Landing } from "./screens/Landing.tsx";
 import { SignIn } from "./screens/SignIn.tsx";
 import { ErrorNote } from "./components/bits.tsx";
+import { Routes, Route, Link, useLocation, useNavigate } from "react-router-dom";
+import { Mark } from "./screens/Landing.tsx";
 import type { PersonMemory } from "./types.ts";
 
 type Tab = "talk" | "notifications" | "book";
@@ -28,43 +30,36 @@ interface Whoami {
   hasDelegate?: boolean;
 }
 
-type Route = "landing" | "signin" | "app";
-
 /**
- * Three routes, decided by hand. No router dependency for three paths.
+ * Routing.
  *
- * ── Auth never moves you ──────────────────────────────────────────────────────
- * There is no redirect anywhere in this file, and that is deliberate. There was:
- * signing in while sitting on the landing page threw you straight into the app,
- * which meant the page you chose was replaced by one you did not ask for the
- * moment a background refetch finished. It is disorienting in a browser and
- * baffling in a deep link.
+ * ── What the hand-rolled version got wrong ────────────────────────────────────
+ * It matched with `pathname.startsWith("/app")`, so `/application` and `/appx`
+ * were the app, and `/signin-help` was the sign-in screen. Anything it did not
+ * recognise fell through to the landing page, so a typo looked like a working
+ * site rather than a missing one. And the tabs were `useState`, which meant the
+ * back button walked you out of the app entirely instead of from Notifications
+ * back to the chat -- the URL never said where you were, so it could not be
+ * shared, bookmarked or reloaded into the same place.
+ *
+ * The tabs are routes now: `/app`, `/app/notifications`, `/app/book`. The rail
+ * navigates, the back button works, and a reload lands where you were.
+ *
+ * ── Auth still never moves you ────────────────────────────────────────────────
+ * There is deliberately no redirect and no guard element here. There was one:
+ * signing in while sitting on the landing page threw you into the app, replacing
+ * the page you chose with one you did not ask for, the moment a background
+ * refetch finished. In a deep link it was worse, because the address bar lied.
  *
  * So authentication changes what a route *renders*, never where you are.
- * `/app` without a granted account renders the setup screen in place, at `/app`,
- * rather than bouncing you to `/signin`. Moving on is something you do, not
- * something the app does to you.
+ * `/app` without a granted account renders the setup screen at `/app`, not at
+ * `/signin`. If that feels like a missing guard, it is a feature: a guard here
+ * is a redirect, and a redirect is what you asked me to remove.
  */
-function routeFor(pathname: string): Route {
-  if (pathname.startsWith("/signin")) return "signin";
-  if (pathname.startsWith("/app")) return "app";
-  return "landing";
-}
 
 export default function App() {
   const { account, state, signIn, disconnect } = useSignIn();
-  const [path, setPath] = useState(() => window.location.pathname);
-  const go = useCallback((to: string) => {
-    window.history.pushState({}, "", to);
-    setPath(to);
-  }, []);
-
-  useEffect(() => {
-    const onPop = () => setPath(window.location.pathname);
-    window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
-  }, []);
-  const [tab, setTab] = useState<Tab>("talk");
+  const nav = useNavigate();
   const [who, setWho] = useState<Whoami | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
@@ -124,46 +119,121 @@ export default function App() {
   // the grant. The old gate keyed on accountId alone, so anyone with an existing
   // account was sent past setup and then had every write fail as unauthorized.
 
-  const route = routeFor(path);
   const ready = Boolean(who?.signedIn && who.accountId && who.hasDelegate);
 
-  if (route === "landing") {
-    return <Landing onSignIn={() => go("/signin")} />;
-  }
-
-  // /signin always shows this, whatever the auth state. /app shows it too when
-  // there is no granted account -- in place, at /app, with the URL left alone.
-  // Nothing here redirects: signing in does not move you off the page you chose.
-  if (route === "signin" || !ready) {
-    return (
-      <SignIn
-        state={state}
-        onSignIn={() => void signIn()}
-        onDisconnect={() => void disconnect(() => go("/"))}
-        walletConnected={Boolean(account?.address)}
-        address={who?.signedIn ? who.address : undefined}
-        hasAccount={Boolean(who?.accountId)}
-        step={ownership.step}
-        onCreateAndGrant={() => void ownership.start()}
-        onClaim={(id) => void ownership.claimAccountId(id)}
-        accountDraft={accountIdDraft}
-        setAccountDraft={setAccountIdDraft}
-        busy={ownership.step === "creating" || ownership.step === "granting"}
-      />
-    );
-  }
+  const signInScreen = (
+    <SignIn
+      state={state}
+      onSignIn={() => void signIn()}
+      onDisconnect={() => void disconnect(() => nav("/", { replace: true }))}
+      walletConnected={Boolean(account?.address)}
+      address={who?.signedIn ? who.address : undefined}
+      hasAccount={Boolean(who?.accountId)}
+      step={ownership.step}
+      onCreateAndGrant={() => void ownership.start()}
+      onClaim={(id) => void ownership.claimAccountId(id)}
+      accountDraft={accountIdDraft}
+      setAccountDraft={setAccountIdDraft}
+      busy={ownership.step === "creating" || ownership.step === "granting"}
+    />
+  );
 
   return (
-    <Workspace
-      tab={tab}
-      setTab={setTab}
-      address={who?.address}
-      onDisconnect={() => void disconnect(() => go("/"))}
-      version={version}
-      onForget={forget}
-      error={error}
-      modelReady={modelReady}
-    />
+    <>
+      <OnNavigate />
+      <Routes>
+        <Route path="/" element={<Landing onSignIn={() => nav("/signin")} />} />
+
+        {/* Always the setup screen, whatever the auth state. */}
+        <Route path="/signin" element={signInScreen} />
+
+        {/* No guard. Without a granted account the setup screen renders here, at
+            /app, and the URL is left alone. A guard here would be a redirect. */}
+        <Route
+          path="/app/*"
+          element={
+            ready ? (
+              <Workspace
+                address={who?.address}
+                onDisconnect={() => void disconnect(() => nav("/", { replace: true }))}
+                version={version}
+                onForget={forget}
+                error={error}
+                modelReady={modelReady}
+              />
+            ) : (
+              signInScreen
+            )
+          }
+        />
+
+        {/* Previously anything unrecognised fell through to the landing page, so a
+            typo looked like a working site instead of a missing one. */}
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </>
+  );
+}
+
+/**
+ * Two things a route change has to do that a plain re-render does not.
+ *
+ * Scroll: without this, going from a scrolled chat back to the landing page keeps
+ * the scroll position, and you land halfway down a page you have not read.
+ *
+ * Focus: without this, keyboard and screen-reader users stay wherever they were.
+ * A single-page app changes the page without the browser knowing, so focus is
+ * left on a link that no longer exists and the next Tab jumps somewhere
+ * unrelated. The heading of the new page is the correct place to be.
+ */
+function OnNavigate() {
+  const { pathname } = useLocation();
+  const first = useRef(true);
+
+  useEffect(() => {
+    if (first.current) {
+      // A reload is not a navigation. Leave a deep link's scroll position alone,
+      // because the browser restored it deliberately.
+      first.current = false;
+      return;
+    }
+    window.scrollTo({ top: 0 });
+    const target = document.querySelector<HTMLElement>("[data-route-heading]") ?? document.querySelector("h1");
+    target?.focus({ preventScroll: true });
+  }, [pathname]);
+
+  return null;
+}
+
+/**
+ * A missing page, said plainly.
+ *
+ * It offers one way out rather than a menu, and it does not pretend the address
+ * was nearly right -- guessing is how you end up shipping a broken link with a
+ * cheerful 404 on top of it.
+ */
+function NotFound() {
+  return (
+    <div data-screen="notfound" className="mx-auto flex min-h-screen w-full max-w-3xl flex-col justify-center px-6 py-12">
+      <div className="flex items-center gap-2.5">
+        <Mark />
+        <span className="text-sm font-bold tracking-tight">People Book</span>
+      </div>
+      <h1 tabIndex={-1} data-route-heading className="mt-8 text-[26px] leading-[1.15] font-bold tracking-tight text-text outline-none sm:text-[2.1rem]">
+        There is nothing at this address.
+      </h1>
+      <p className="mt-4 max-w-[36rem] text-[14.5px] leading-7 text-muted">
+        If you followed a link here, it is out of date.
+      </p>
+      <div className="mt-9">
+        <Link
+          to="/"
+          className="inline-flex min-h-11 items-center rounded-lg bg-accent px-5 py-3 text-[13px] font-bold text-base transition-colors hover:bg-accent/85"
+        >
+          Back to the start
+        </Link>
+      </div>
+    </div>
   );
 }
 

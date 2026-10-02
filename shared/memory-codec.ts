@@ -52,6 +52,8 @@ interface MemoryMeta {
   supersedes?: string;
   deleted?: boolean;
   verbatim?: string;
+  /** The user's own reason for a correction. Absent is stored as absent. */
+  reason?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -104,6 +106,7 @@ export interface MakeMemoryInput {
   anniversary?: string;
   supersedes?: string;
   verbatim?: string;
+  reason?: string;
   id?: string;
   now?: Date;
 }
@@ -116,6 +119,9 @@ const STATUS_FOR_TYPE: Record<MemoryType, MemoryStatus> = {
   taboo: "active",
   howto: "active",
   update: "active",
+  // A correction is live until it is revised or revoked. `open` would make it a
+  // promise, which it is not; `active` is a standing fact about how to work.
+  correction: "active",
 };
 
 export function makeMemory(input: MakeMemoryInput): PersonMemory {
@@ -150,6 +156,7 @@ export function makeMemory(input: MakeMemoryInput): PersonMemory {
     ...(input.anniversary ? { anniversary: input.anniversary } : {}),
     ...(input.supersedes ? { supersedes: input.supersedes } : {}),
     ...(input.verbatim ? { verbatim: input.verbatim } : {}),
+    ...(input.reason ? { reason: input.reason } : {}),
     createdAt: stamp,
     updatedAt: stamp,
   };
@@ -180,6 +187,8 @@ export function serializeMemory(memory: PersonMemory): string {
   if (memory.anniversary) meta.anniversary = memory.anniversary;
   if (memory.supersedes) meta.supersedes = memory.supersedes;
   if (memory.verbatim) meta.verbatim = memory.verbatim;
+  // After verbatim, so the byte order of every pre-existing memory is unchanged.
+  if (memory.reason) meta.reason = memory.reason;
   if (memory.deleted) meta.deleted = true;
 
   return `${memory.text}\n${SENTINEL}${JSON.stringify(meta)}`;
@@ -239,6 +248,7 @@ function isMeta(value: unknown): value is MemoryMeta {
   if (!isISOOrUndefined(m.dueAt)) return false;
   if (!isAnniversaryOrUndefined(m.anniversary)) return false;
   if (typeof m.supersedes !== "undefined" && typeof m.supersedes !== "string") return false;
+  if (typeof m.reason !== "undefined" && typeof m.reason !== "string") return false;
   if (typeof m.verbatim !== "undefined" && typeof m.verbatim !== "string") return false;
   if (typeof m.deleted !== "undefined" && typeof m.deleted !== "boolean") return false;
   if (typeof m.createdAt !== "string" || !m.createdAt) return false;
@@ -295,7 +305,7 @@ export function reviseMemory(
 
   // Optional fields are dropped rather than set to undefined, so a rewrite that
   // clears a date does not leave a `"dueAt":undefined` hole in the JSON.
-  for (const key of ["occurredAt", "dueAt", "supersedes", "verbatim"] as const) {
+  for (const key of ["occurredAt", "dueAt", "supersedes", "verbatim", "reason"] as const) {
     if (next[key] === undefined) delete next[key];
   }
   if (next.deleted !== true) delete next.deleted;

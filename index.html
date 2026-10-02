@@ -10,6 +10,13 @@
       name="description"
       content="A private assistant that remembers everyone in your life, and comes to you instead of waiting to be asked."
     />
+    <!-- The landing background lives on a CDN. Preconnecting pays for DNS, TCP
+         and TLS before React has even mounted, which was the bulk of the delay
+         before it: the asset itself is faststart and range-capable, so the
+         browser can play it from the first 2.5KB. `crossorigin` matters -- the
+         video element is fetched with CORS, and without it this opens a second,
+         separate connection that throws the handshake away. -->
+    <link rel="preconnect" href="https://d8j0ntlcm91z4.cloudfront.net" crossorigin />
     <title>People Book</title>
   </head>
   <body>

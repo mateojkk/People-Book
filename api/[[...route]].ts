@@ -417,6 +417,46 @@ app.get("/api/memories", async (c) => {
 });
 
 /**
+ * The revision chain of one memory.
+ *
+ * Every correction and every change of mind, oldest first, with what was believed
+ * at each step. This is the read that makes the append-only model worth anything:
+ * the March answer is still there, and asking for it gets the March answer rather
+ * than the current one rewritten over it.
+ */
+app.get("/api/memories/:id/history", async (c) => {
+  const resolved = await resolveStore(c);
+  if ("error" in resolved) return resolved.error;
+  const id = c.req.param("id");
+  try {
+    const history = await resolved.store.listHistory(id);
+    if (!history.length) {
+      return c.json({ error: "No memory with that id." }, 404);
+    }
+    return c.json({ id, revisions: history });
+  } catch (error) {
+    return toErrorResponse(c, error);
+  }
+});
+
+/**
+ * Standing corrections.
+ *
+ * Separate from the ledger because these are rules about how the assistant works,
+ * not facts about anyone's life. Rendering them beside "Maya is vegetarian" is what
+ * makes them read as trivia instead.
+ */
+app.get("/api/corrections", async (c) => {
+  const resolved = await resolveStore(c);
+  if ("error" in resolved) return resolved.error;
+  try {
+    return c.json({ corrections: await resolved.store.listCorrections() });
+  } catch (error) {
+    return toErrorResponse(c, error);
+  }
+});
+
+/**
  * The nudges.
  *
  * `?memory=off` is the A/B switch. It does not degrade the product, it produces
