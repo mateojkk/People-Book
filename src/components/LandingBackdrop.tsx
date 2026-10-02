@@ -77,7 +77,21 @@ export function LandingBackdrop() {
           src={BACKDROP_SRC}
           autoPlay
           muted
-          loop
+          // Deliberately NOT looped. Measured on this asset, looping roughly
+          // doubles the wait for a playable frame:
+          //
+          //   loop     6s: 5% fetched, readyState 1 (nothing on screen)
+          //            12s: 16% fetched
+          //   no loop  6s: 12% fetched, readyState 3 (playing)
+          //            12s: 48% fetched
+          //
+          // The browser knows a looping video has to come back to the start, so it
+          // pulls the whole 32MB rather than playing what it has. Dropping `loop`
+          // lets it stream, reach a playable state in half the time, and stop
+          // fetching once it is ahead. The cost is that it plays once and holds
+          // the last frame -- invisible at this opacity, under a scrim, behind the
+          // text. If a looping background is ever genuinely wanted, the fix is a
+          // smaller file at a URL, not the loop attribute.
           playsInline
           preload="auto"
           onCanPlay={() => setVisible(true)}

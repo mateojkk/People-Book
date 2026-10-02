@@ -15,28 +15,28 @@ const setup = async (who) => {
 
 // 1. Landing, signed out.
 const p1 = await setup({ signedIn: false });
-await p1.goto("http://localhost:5173/", { waitUntil: "networkidle" });
+await p1.goto("http://localhost:5173/", { waitUntil: "load" });
 await p1.waitForTimeout(600);
 await p1.screenshot({ path: "/tmp/shots/10-landing.png" });
 await p1.close();
 
 // 2. Sign-in, signed out.
 const p2 = await setup({ signedIn: false });
-await p2.goto("http://localhost:5173/signin", { waitUntil: "networkidle" });
+await p2.goto("http://localhost:5173/signin", { waitUntil: "load" });
 await p2.waitForTimeout(600);
 await p2.screenshot({ path: "/tmp/shots/11-signin.png" });
 await p2.close();
 
 // 3. Sign-in, signed in but not granted -> the setup step.
 const p3 = await setup({ signedIn: true, address: A, accountId: null, hasDelegate: false });
-await p3.goto("http://localhost:5173/signin", { waitUntil: "networkidle" });
+await p3.goto("http://localhost:5173/signin", { waitUntil: "load" });
 await p3.waitForTimeout(600);
 await p3.screenshot({ path: "/tmp/shots/12-setup.png" });
 await p3.close();
 
 // 4. The app.
 const p4 = await setup({ signedIn: true, address: A, accountId: C, hasDelegate: true });
-await p4.goto("http://localhost:5173/app", { waitUntil: "networkidle" });
+await p4.goto("http://localhost:5173/app", { waitUntil: "load" });
 await p4.waitForTimeout(800);
 await p4.screenshot({ path: "/tmp/shots/13-app.png" });
 console.log("app body:", JSON.stringify((await p4.evaluate(() => document.body.innerText)).slice(0, 160)));

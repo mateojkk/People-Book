@@ -18,6 +18,8 @@
 import { chromium } from "playwright";
 
 const BASE = process.env.UI_BASE_URL || "http://localhost:5173";
+
+
 const ADDRESS = "0xcdc3f886eba88a4459c987f76f24a5720650b5edaa77816f95c92f1f355e142a";
 const ACCOUNT = "0x7a7e59fd47072f7cab58b45591e8865c7b4896a9ae92a7e22b093e2bce66f97b";
 
@@ -104,7 +106,7 @@ section("the empty state is the input and nothing else");
 const anon = await browser.newPage({ viewport: { width: 1280, height: 900 } });
 await anon.route("**/api/auth/whoami", (r) => r.fulfill({ json: { signedIn: false } }));
 await anon.route("**/api/health", (r) => r.fulfill({ json: { ok: true, config: { groq: true } } }));
-await anon.goto(BASE + "/", { waitUntil: "networkidle" });
+await anon.goto(BASE + "/", { waitUntil: "load" });
 await anon.waitForTimeout(600);
 const landing = await anon.evaluate(() => document.body.innerText);
 // It used to assert /remembers the people/, which is the old pitch. The product
@@ -176,13 +178,13 @@ await anon.close();
 // Scoped to the conversation column. The whole body includes the rail, where
 // "People Book" is the brand and legitimately present -- asserting on that is
 // asserting on the sidebar.
-await page.goto(BASE + "/", { waitUntil: "networkidle" });
+await page.goto(BASE + "/", { waitUntil: "load" });
 await page.waitForTimeout(500);
 
 // <main> means different things on the two pages, which is fine: on /app it is
 // the conversation thread, and the chat's own assertions measure it. The thing
 // that must not happen is /app claiming a <main> that is not the thread.
-await page.goto(BASE + "/app", { waitUntil: "networkidle" });
+await page.goto(BASE + "/app", { waitUntil: "load" });
 await page.waitForTimeout(400);
 const threadMain = await page.evaluate(() => {
   const m = document.querySelector("main");
@@ -195,7 +197,7 @@ check("/app's <main> is the conversation thread", threadMain.exists && threadMai
 // saying: navigating to "/" bounced to the workspace on its own via the auth
 // redirect, so the composer assertions were quietly running against the app while
 // claiming to be about the landing page.
-await page.goto(BASE + "/app", { waitUntil: "networkidle" });
+await page.goto(BASE + "/app", { waitUntil: "load" });
 await page.waitForTimeout(500);
 
 // ── The composer ─────────────────────────────────────────────────────────────
@@ -245,10 +247,10 @@ for (const start of ["/", "/signin", "/app"]) {
     r.fulfill({ json: signedIn ? { signedIn: true, address: "0xabc", accountId: "0xdef", hasDelegate: true } : { signedIn: false } }),
   );
   await page.route("**/api/health", (r) => r.fulfill({ json: { ok: true, config: { groq: true } } }));
-  await page.goto(BASE + start, { waitUntil: "networkidle" });
+  await page.goto(BASE + start, { waitUntil: "load" });
   const before = new URL(page.url()).pathname;
   signedIn = true;
-  await page.reload({ waitUntil: "networkidle" });
+  await page.reload({ waitUntil: "load" });
   const after = new URL(page.url()).pathname;
   check(`signing in on ${start} leaves you on ${start}`, before === after, `moved to ${after}`);
   await page.close();
@@ -260,7 +262,7 @@ for (const start of ["/", "/signin", "/app"]) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   await page.route("**/api/auth/whoami", (r) => r.fulfill({ json: { signedIn: false } }));
   await page.route("**/api/health", (r) => r.fulfill({ json: { ok: true, config: { groq: true } } }));
-  await page.goto(BASE + "/app", { waitUntil: "networkidle" });
+  await page.goto(BASE + "/app", { waitUntil: "load" });
   await page.waitForTimeout(400);
   check("/app without an account keeps its URL", new URL(page.url()).pathname === "/app");
   check("/app without an account shows the setup screen", await page.getByText("Sign in", { exact: false }).first().isVisible());
@@ -290,7 +292,7 @@ section("corrections are kept with their reasons, and their history");
   await c.route("**/api/corrections", (r) => r.fulfill({ json: { corrections: [correction] } }));
   await c.route("**/api/memories/*/history", (r) => r.fulfill({ json: { id: "mem_c1", revisions: history } }));
   await c.route("**/api/memories", (r) => r.fulfill({ json: { memories: [correction], coverage: "complete", blobCount: 2, truncated: false } }));
-  await c.goto(BASE + "/app/book", { waitUntil: "networkidle" });
+  await c.goto(BASE + "/app/book", { waitUntil: "load" });
   await c.waitForTimeout(600);
 
   const body = await c.locator("body").innerText();
@@ -322,7 +324,7 @@ section("disconnecting ends the session and unplugs the wallet");
     signedIn = false;
     await r.fulfill({ json: { ok: true } });
   });
-  await page.goto(BASE + "/app", { waitUntil: "networkidle" });
+  await page.goto(BASE + "/app", { waitUntil: "load" });
   await page.waitForTimeout(400);
   // In the workspace, not on a setup screen nobody returns to. The only Disconnect
   // button used to live there, so a fully set-up user had no way to leave at all.
@@ -344,7 +346,7 @@ for (const path of ["/", "/signin"]) {
   const phone = await browser.newPage({ viewport: { width: 390, height: 844 } });
   await phone.route("**/api/auth/whoami", (r) => r.fulfill({ json: { signedIn: false } }));
   await phone.route("**/api/health", (r) => r.fulfill({ json: { ok: true, config: { groq: true } } }));
-  await phone.goto(BASE + path, { waitUntil: "networkidle" });
+  await phone.goto(BASE + path, { waitUntil: "load" });
   await phone.waitForTimeout(500);
   const smallest = await phone.evaluate(() =>
     Math.min(...[...document.querySelectorAll("button, a")].map((e) => e.getBoundingClientRect().height).filter((x) => x > 0)),
@@ -385,7 +387,7 @@ await nodelta.route("**/api/today", (r) => r.fulfill({ json: { tasks: [], histor
 await nodelta.route("**/api/chat", (r) =>
   r.fulfill({ headers: { "content-type": "text/event-stream" },
     body: `data: ${JSON.stringify({ type: "done", reply: "Answered without a single delta.", saved: [], cited: [], volunteered: [] })}\n\n` }));
-await nodelta.goto(BASE + "/app", { waitUntil: "networkidle" });
+await nodelta.goto(BASE + "/app", { waitUntil: "load" });
 await nodelta.locator("textarea").first().fill("hello");
 await nodelta.keyboard.press("Enter");
 await nodelta.waitForTimeout(900);
@@ -408,7 +410,7 @@ if (await cited.count()) {
     check("a citation opens the book", /Your book|Partial view/.test(await page.evaluate(() => document.body.innerText)), "the audit surface is what a citation is for");
   }
 }
-await page.goto(BASE + "/app", { waitUntil: "networkidle" });
+await page.goto(BASE + "/app", { waitUntil: "load" });
 await page.waitForTimeout(500);
 
 const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
@@ -424,7 +426,7 @@ section("the rail collapses without clipping itself");
   await c.route("**/api/auth/whoami", (r) => r.fulfill({ json: { signedIn: true, address: ADDRESS, accountId: ACCOUNT, hasDelegate: true } }));
   await c.route("**/api/account/deployment", (r) => r.fulfill({ json: { packageId: "0xpkg", registryId: "0xreg", network: "mainnet", registryOk: true, registryDetail: "" } }));
   await c.route("**/api/health", (r) => r.fulfill({ json: { ok: true, config: { delegate: true, groq: true, session: true } } }));
-  await c.goto(BASE + "/app", { waitUntil: "networkidle" });
+  await c.goto(BASE + "/app", { waitUntil: "load" });
   await c.waitForTimeout(400);
   await c.getByRole("button", { name: /collapse/i }).first().click();
   await c.waitForTimeout(500);
@@ -458,7 +460,7 @@ await page.setViewportSize({ width: 1280, height: 900 });
 // ── Today, and the notification that reaches you ────────────────────────────
 section("today is a list you can finish");
 
-await page.goto(BASE + "/app", { waitUntil: "networkidle" });
+await page.goto(BASE + "/app", { waitUntil: "load" });
 await page.waitForTimeout(600);
 const shell = await page.evaluate(() => document.body.innerText);
 // A sentence, not a count. "2 things need you today" is a reminders app.
