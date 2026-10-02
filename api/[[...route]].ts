@@ -18,6 +18,7 @@ import { computeNudges, elisionLine } from "./lib/ranking.ts";
 import { capture, phraseNudges } from "./lib/capture.ts";
 import { takeTurn } from "./lib/chat.ts";
 import { tasksFor, composeNotice, noticeHistory } from "./lib/tasks.ts";
+import { computePatterns } from "./lib/patterns.ts";
 import { PeopleBookStore, MemoryNotFoundError } from "./lib/store.ts";
 import { isConfigError, isWriteError, NAMESPACE, RECALL_LIMIT } from "./lib/memwal.ts";
 import {
@@ -451,6 +452,27 @@ app.get("/api/corrections", async (c) => {
   if ("error" in resolved) return resolved.error;
   try {
     return c.json({ corrections: await resolved.store.listCorrections() });
+  } catch (error) {
+    return toErrorResponse(c, error);
+  }
+});
+
+/**
+ * "What do I keep saying?"
+ *
+ * Computed, not stored. There is no memory in anyone's book that contains this
+ * answer -- it is a shape across many of them, so it cannot be retrieved and must
+ * be derived. Deterministic on purpose: asked this question, a model will answer
+ * fluently and invent the answer, which is the one thing this product must never
+ * do. Every pattern comes back with the memory ids behind it, so the user can be
+ * shown the evidence instead of a conclusion.
+ */
+app.get("/api/patterns", async (c) => {
+  const resolved = await resolveStore(c);
+  if ("error" in resolved) return resolved.error;
+  try {
+    const { memories } = await resolved.store.listLive();
+    return c.json({ patterns: computePatterns(memories) });
   } catch (error) {
     return toErrorResponse(c, error);
   }

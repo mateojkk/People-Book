@@ -1,4 +1,53 @@
 /**
+ * "What do I keep saying?"
+ *
+ * Shown in the book rather than only on request, because the whole point is that
+ * a pattern is invisible from the inside: nobody can see that they have said the
+ * same thing four times. Finding it has to be something the book does for you.
+ *
+ * Every line carries its own dates, because the evidence is the finding. A
+ * conclusion you cannot check is a claim, and this product does not make claims.
+ */
+export function PatternsPanel() {
+  const [patterns, setPatterns] = useState<Pattern[] | null>(null);
+
+  useEffect(() => {
+    void api
+      .get<{ patterns: Pattern[] }>("/api/patterns")
+      .then((r) => setPatterns(r.patterns))
+      // A missing panel must never take the book down with it.
+      .catch(() => setPatterns([]));
+  }, []);
+
+  if (!patterns?.length) return null;
+
+  return (
+    <div className="rounded-xl bg-panel p-4">
+      <p className="text-xs font-bold text-text">What you keep saying</p>
+      <p className="mt-1.5 text-[11px] leading-5 text-faint">
+        Worked out from your book, not guessed. Each one is the same promise, more
+        than once.
+      </p>
+      <ul className="mt-3 space-y-2.5">
+        {patterns.slice(0, 5).map((p) => (
+          <li key={`${p.person}:${p.claim}`} className="text-[12px] leading-6">
+            <span className="text-text">{p.claim}</span>
+            <span className="text-muted">
+              {p.kind === "slipped"
+                ? ` — said ${p.count} times, and the due date moved later each time.`
+                : ` — said ${p.count} times, ${p.first === p.last ? `on ${p.first}` : `between ${p.first} and ${p.last}`}, still open.`}
+            </span>
+            <span className="ml-1 text-faint">
+              {p.person === "you" ? "" : `(${p.person})`}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/**
  * The corrections the user has given, with the reasons.
  *
  * This exists because a stored correction nobody can see has changed nothing. The
@@ -17,6 +66,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api.ts";
 import { ErrorNote } from "./bits.tsx";
 import type { PersonMemory } from "../types.ts";
+import type { Pattern } from "../types.ts";
 
 interface CorrectionsResponse {
   corrections: PersonMemory[];

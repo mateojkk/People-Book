@@ -107,7 +107,14 @@ await anon.route("**/api/health", (r) => r.fulfill({ json: { ok: true, config: {
 await anon.goto(BASE + "/", { waitUntil: "networkidle" });
 await anon.waitForTimeout(600);
 const landing = await anon.evaluate(() => document.body.innerText);
-check("the landing page says what the thing is", /remembers the people/i.test(landing), JSON.stringify(landing.slice(0, 100)));
+// It used to assert /remembers the people/, which is the old pitch. The product
+// is not "it remembers" -- the theme of the hackathon made that free. It is the
+// questions, so that is what is asserted now, and the headline must BE the
+// question, because everything after it inherits whatever the headline promised.
+check("the headline is the question, not the mechanism", /ask it what happened/i.test(landing), JSON.stringify(landing.slice(0, 100)));
+check("it names the questions the product answers", /what do i keep saying/i.test(landing) && /what did i promise/i.test(landing), JSON.stringify(landing.slice(0, 200)));
+// The one claim a generic chatbot cannot make, so it has to be on the page.
+check("and shows that answers come with evidence", /i can show you both/i.test(landing), JSON.stringify(landing.slice(0, 400)));
 check("and offers one action", /sign in with a sui wallet/i.test(landing));
 const fold = await anon.evaluate(() => {
   const h1 = document.querySelector("h1")?.innerText ?? "";

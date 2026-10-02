@@ -39,6 +39,7 @@
  */
 
 import { capture } from "./capture.ts";
+import { computePatterns, type Pattern } from "./patterns.ts";
 import { computeNudges } from "./ranking.ts";
 import { phraseNudges } from "./capture.ts";
 import type { PeopleBookStore } from "./store.ts";
@@ -144,6 +145,11 @@ export async function takeTurn(
         // Kept as "MM-DD" rather than resolved to a date, so it keeps coming round
         // next year instead of quietly expiring.
         anniversary: candidate.anniversary,
+        // The user's own reason, for corrections only. This field is the entire
+        // value of the type and it is easy to omit here, because nothing breaks
+        // if you do -- the memory is written, the panel renders, and the reason
+        // is simply gone. That is the failure mode this comment exists to stop.
+        ...(candidate.reason ? { reason: candidate.reason } : {}),
         // Told to us is confirmed. See the note at the top of this file.
         //
         // This field is load-bearing and easy to miss: makeMemory defaults it to
@@ -396,6 +402,52 @@ Rules:
 - If the message is just chat, reply like a person who is paying attention. Do not force a memory out of it.
 - Do not invent facts. Everything you assert must come from the memories given to you.
 - You are continuing a conversation, not starting one. Resolve "her", "him", "it", "what about Dev?" against the turns above. If it is genuinely ambiguous, ask one short question rather than guessing.`;
+
+/**
+ * Answers "what do I keep saying?" without a model.
+ *
+ * This is the one question in the product that must never reach the model. Asked
+ * it, a model will produce three sentences of fluent, plausible, invented
+ * psychology about your habits -- and the user has no way to tell, which is
+ * precisely the failure this whole product exists to avoid. So the answer is
+ * rendered from the computed patterns instead: the exact claims, the exact
+ * dates, and the count. If there are no patterns it says so, which is also the
+ * truth.
+ */
+function patternAnswer(patterns: readonly Pattern[]): string {
+  if (!patterns.length) {
+    return "Nothing in the book comes up more than once, so there is no pattern to point at. That may well be true rather than a gap.";
+  }
+
+  const lines = patterns.slice(0, 3).map((p) => {
+    const times = `${p.count} times`;
+    const span = p.first === p.last ? p.first : `${p.first} and ${p.last}`;
+    if (p.kind === "slipped") {
+      return `· ${p.claim} — you said this ${times}, between ${span}, and each time the due date was later than the last.`;
+    }
+    if (p.kind === "unkept") {
+      return `· ${p.claim} — you said this ${times}, on ${span}, and it is still open.`;
+    }
+    return `· ${p.claim} — said ${times}, on ${span}.`;
+  });
+
+  return `From your book, not a guess:\n${lines.join("\n")}`;
+}
+
+/**
+ * Does this message ask the question the book can answer better than a model?
+ *
+ * Matched on intent words rather than an exact string, because the phrasing will
+ * be "what am I always saying", "what do I keep doing" and "why do I keep
+ * apologising" as often as it is the literal question. Anything that is not
+ * clearly one of the four book-answered questions falls through to the model.
+ */
+export function asksForPatterns(message: string): boolean {
+  const m = message.toLowerCase();
+  const aboutHabits = /\b(keep\w*|always|again|repeat\w*|habit\w*|pattern\w*|same thing|every time|constantly|again and again)\b/.test(m);
+  const asksHistory = /\b(what|why|which|tell|show)\b/.test(m);
+  return aboutHabits && asksHistory;
+}
 
 /**
  * Renders the user's standing corrections as binding rules.

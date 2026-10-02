@@ -10,7 +10,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api.ts";
 import { Empty, ErrorNote } from "./bits.tsx";
 import type { PersonMemory } from "../types.ts";
-import { CorrectionsPanel } from "./CorrectionsPanel.tsx";
+import { CorrectionsPanel, PatternsPanel } from "./CorrectionsPanel.tsx";
 
 interface MemoriesResponse {
   memories: PersonMemory[];
@@ -49,6 +49,7 @@ export function LedgerView({ onForget }: { onForget: (id: string) => void }) {
 
   return (
     <div className="space-y-3">
+      <PatternsPanel />
       <CorrectionsPanel />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-medium text-muted">

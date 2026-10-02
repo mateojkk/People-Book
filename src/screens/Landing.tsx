@@ -28,8 +28,9 @@ export function Landing({ onSignIn }: { onSignIn: () => void }) {
 
       <main className="mx-auto w-full max-w-6xl px-5 sm:px-8">
         <Hero onSignIn={onSignIn} />
-        <WhatItHolds />
+        <Questions />
         <ItTalks />
+        <TheEvidence />
         <TheBook />
         <TheNudge />
         <Yours />
@@ -80,14 +81,14 @@ function Hero({ onSignIn }: { onSignIn: () => void }) {
       <h1
         tabIndex={-1}
         data-route-heading
-        className="max-w-[22ch] text-[2.4rem] leading-[1.05] font-bold tracking-tight text-text outline-none sm:text-[3.6rem]"
+        className="max-w-[24ch] text-[2.4rem] leading-[1.05] font-bold tracking-tight text-text outline-none sm:text-[3.6rem]"
       >
-        It remembers the people in your life.
+        Ask it what happened.
       </h1>
       <p className="mt-6 max-w-[58ch] text-[15px] leading-7 text-muted">
-        Birthdays, promises you have not kept, people who have gone quiet, the way
-        someone takes a call. You talk, it works out what is worth keeping — and it
-        says so when it is time.
+        Who you spoke to last month and what you said. Why it changed with someone.
+        What you promised and never did. What you keep saying. Every answer comes
+        from your own history, and shows you the exact conversation it came from.
       </p>
       <div className="mt-9">
         <button type="button" onClick={onSignIn} className={CTA}>
@@ -130,39 +131,30 @@ function Section({
 }
 
 /**
- * What it holds.
+ * The questions.
  *
- * Three cards, tonal rather than outlined. These are the only three claims the
- * product actually makes about content, so the section is exactly three.
+ * This section used to be three cards describing categories of memory, which is
+ * the mechanism wearing a product's clothes. The product is the five questions,
+ * so those are what the page lists.
  */
-function WhatItHolds() {
+function Questions() {
   const items = [
-    {
-      title: "The people",
-      body: "Who matters, and the details you would otherwise have to ask about: how they take a call, who they are to you, what you are supposed to have heard back about.",
-    },
-    {
-      title: "The promises",
-      body: "What you said you would do, and whether you did. It brings one back at the moment it stops being a promise and starts being an omission.",
-    },
-    {
-      title: "The plans",
-      body: "Birthdays, anniversaries, the thing next Tuesday. Say a date once and it carries forward, instead of needing re-telling every year.",
-    },
+    ["What happened with her?", "The actual sequence, and the conversation each point came from."],
+    ["Why did it change with him?", "The turn itself, and the message where it turned."],
+    ["What did I promise?", "Everything outstanding, and when you said it."],
+    ["What do I keep saying?", "The same thing, more than once. You cannot see this yourself — it is worked out from your book."],
+    ["What did we decide last time?", "The decision, cited to the turn it was made in."],
   ];
   return (
-    <Section
-      label="What it holds"
-      title="Three things worth remembering, and nothing else."
-    >
-      <div className="grid gap-3 sm:grid-cols-3">
-        {items.map((i) => (
-          <div key={i.title} className="rounded-xl bg-panel p-5">
-            <h3 className="text-[13.5px] font-bold text-text">{i.title}</h3>
-            <p className="mt-2.5 text-[13px] leading-6 text-muted">{i.body}</p>
-          </div>
+    <Section label="What you can ask" title="Five questions about your own life.">
+      <ul className="max-w-[44rem] space-y-3.5">
+        {items.map(([q, a]) => (
+          <li key={q}>
+            <p className="text-[13.5px] font-bold text-text">{q}</p>
+            <p className="mt-1 text-[13px] leading-6 text-muted">{a}</p>
+          </li>
         ))}
-      </div>
+      </ul>
     </Section>
   );
 }
@@ -175,6 +167,36 @@ function ItTalks() {
       title="You talk to it. There is nothing to fill in."
       lead="Most memory tools make you maintain them. A box for a birthday, a field for a note, a list that only ever gets longer, and nobody has ever filled one in. So you talk, and it works out what is worth keeping as it goes — quietly, in the conversation, without interrupting you to ask."
     />
+  );
+}
+
+/**
+ * Evidence.
+ *
+ * The one claim on this page that a generic chatbot cannot make, so it gets its
+ * own section rather than being a footnote. A model asked "what is her birthday"
+ * answers "the 16th" and cannot tell you where it got that. This one can.
+ */
+function TheEvidence() {
+  return (
+    <Section
+      label="Where the answers come from"
+      title="It shows you the conversation it used."
+    >
+      <div className="max-w-[36rem] rounded-xl bg-panel p-5">
+        <p className="text-[11px] tracking-wider text-faint uppercase">Ask</p>
+        <p className="mt-2.5 text-[14px] leading-7 text-text">When is her birthday?</p>
+        <p className="mt-5 text-[11px] tracking-wider text-faint uppercase">Answer</p>
+        <p className="mt-2.5 text-[14px] leading-7 text-text">
+          The 16th. You told me the 14th on the 2nd of March and the 16th on the 9th
+          of June. I can show you both.
+        </p>
+        <p className="mt-4 text-[11.5px] leading-5 text-faint">
+          Nothing is overwritten, so when you changed your mind the old answer is
+          still there.
+        </p>
+      </div>
+    </Section>
   );
 }
 
