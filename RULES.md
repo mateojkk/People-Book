@@ -225,24 +225,32 @@ for less movement gets the static gradient, not the video.
 
 ---
 
-## 22. Serve the dev server over TLS, and mark the cookie Secure
+## 22. The dev cert is a trade, and it was the wrong side of it
 
 The session cookie was `Secure` only in production, purely so it would work over
-plain http on localhost. That is a small convenience bought with two real
-problems: the signed challenge and the cookie went out unencrypted on every dev
-machine, and Sui wallets refused the origin with a "your connection is not secure"
-warning. The warning reads like an attack, and it is not one -- but it trains
-people to click past exactly that kind of prompt, which is the worst possible
-outcome for a wallet app.
+plain http on localhost. That bought two problems with one small convenience: the
+signed challenge and the cookie went out unencrypted on every dev machine, and Sui
+wallets refused the origin with a "your connection is not secure" warning.
 
-Localhost traffic never leaves the machine, so this was never exploitable in dev.
-It was still wrong, because "harmless on my machine" is how the same shortcut
-ends up on a staging host. The dev server now runs on TLS via
-@vitejs/plugin-basic-ssl and `Secure` is unconditional. The browser asks once
-about the self-signed cert; that is a fair price for an origin that is genuinely
-secure afterwards.
+The dev server was put behind a self-signed cert to fix it, and the cookie became
+`Secure` unconditionally. Both were correct in isolation and together they were a
+worse experience: every page load became a cert interstitial, on a wallet app,
+where a permanently untrusted origin is precisely the impression that must not be
+given. Reverted to plain http.
 
----
+Two things are worth keeping from the detour:
+
+**A `Secure` cookie is dropped outright over http, with no error.** The cookie
+simply never arrives and sign-in fails with nothing to read. So `Secure` cannot be
+unconditional while dev is plain http -- that combination looks like a security
+improvement and is actually an outage.
+
+**"It is only localhost" is true and still not the answer.** Nothing could
+intercept loopback traffic, so there was never an exploit. But the shortcut was
+one `NODE_ENV` check from shipping on a host where it mattered, and it is the same
+reasoning that produces real breaches. If dev ever needs real TLS again, the way
+to do it is a locally trusted CA (mkcert) so the origin is genuinely valid, not a
+self-signed one that trains people to click through warnings.
 
 ## The one above the others
 

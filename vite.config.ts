@@ -1,7 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
-import basicSsl from "@vitejs/plugin-basic-ssl";
 import path from "node:path";
 
 // The API runs as a plain Node server in dev (scripts/dev-api.ts) and as a
@@ -12,16 +11,6 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    // TLS on the dev server, so the origin is a secure context.
-    //
-    // Not cosmetic. Sui wallets refuse to connect over plain http and say so, and
-    // separately the session cookie is only marked `Secure` in production -- so on
-    // http the signed challenge and the session cookie both went out unencrypted.
-    // Harmless on loopback, a real hole anywhere else, and it made the wallet
-    // prompt look like an attack because to a wallet it is one. The cert is
-    // self-signed, so the browser asks once; that is a one-time cost for an
-    // origin that is genuinely secure afterwards.
-    basicSsl(),
   ],
   resolve: {
     alias: {
@@ -31,7 +20,6 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    https: true,
     proxy: {
       "/api": {
         target: "http://127.0.0.1:8787",

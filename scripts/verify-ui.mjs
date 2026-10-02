@@ -17,12 +17,7 @@
 
 import { chromium } from "playwright";
 
-// https, because that is what the dev server now serves and what the wallets
-// accept. Playwright is told to ignore the self-signed cert for the same reason
-// curl -k is: it is locally generated, on loopback, and there is nothing to
-// verify it against.
-const BASE = process.env.UI_BASE_URL || "https://localhost:5173";
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+const BASE = process.env.UI_BASE_URL || "http://localhost:5173";
 const ADDRESS = "0xcdc3f886eba88a4459c987f76f24a5720650b5edaa77816f95c92f1f355e142a";
 const ACCOUNT = "0x7a7e59fd47072f7cab58b45591e8865c7b4896a9ae92a7e22b093e2bce66f97b";
 
@@ -44,11 +39,7 @@ function section(name) {
 }
 
 const browser = await chromium.launch();
-
-/** The dev cert is self-signed, so every context has to be told to ignore it. */
-const openPage = async (opts = {}) =>
-  browser.newPage({ ignoreHTTPSErrors: true, ...opts });
-const page = await openPage({ viewport: { width: 1280, height: 900 } });
+const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
 const pageErrors = [];
 page.on("pageerror", (e) => pageErrors.push(e.message));
 
@@ -110,7 +101,7 @@ section("the empty state is the input and nothing else");
 
 // The three routes, because they are three screens and only one of them had ever
 // been looked at. Signed out, so / is the landing page rather than a redirect.
-const anon = await openPage({ viewport: { width: 1280, height: 900 } });
+const anon = await browser.newPage({ viewport: { width: 1280, height: 900 } });
 await anon.route("**/api/auth/whoami", (r) => r.fulfill({ json: { signedIn: false } }));
 await anon.route("**/api/health", (r) => r.fulfill({ json: { ok: true, config: { groq: true } } }));
 await anon.goto(BASE + "/", { waitUntil: "networkidle" });
@@ -249,7 +240,7 @@ section("being signed in never changes which page you are on");
 // you did not ask for, the moment a background refetch finished.
 for (const start of ["/", "/signin", "/app"]) {
   let signedIn = false;
-  const page = await openPage({ viewport: { width: 1280, height: 800 } });
+  const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   await page.route("**/api/auth/whoami", (r) =>
     r.fulfill({ json: signedIn ? { signedIn: true, address: "0xabc", accountId: "0xdef", hasDelegate: true } : { signedIn: false } }),
   );
@@ -266,7 +257,7 @@ for (const start of ["/", "/signin", "/app"]) {
 // A deep link to /app with no account shows the setup screen AT /app. It used to
 // bounce to /signin, which meant the address bar lied about where you were.
 {
-  const page = await openPage({ viewport: { width: 1280, height: 800 } });
+  const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   await page.route("**/api/auth/whoami", (r) => r.fulfill({ json: { signedIn: false } }));
   await page.route("**/api/health", (r) => r.fulfill({ json: { ok: true, config: { groq: true } } }));
   await page.goto(BASE + "/app", { waitUntil: "networkidle" });
@@ -282,7 +273,7 @@ section("corrections are kept with their reasons, and their history");
 // A correction nobody can read has changed nothing, so this asserts the panel,
 // the reason, and that the revision chain is reachable and shows what changed.
 {
-  const c = await openPage({ viewport: { width: 1280, height: 900 } });
+  const c = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   const correction = {
     id: "mem_c1", rev: 2, person: "you", type: "correction", status: "active",
     confidence: "confirmed", text: "Do not use Inter.",
@@ -323,7 +314,7 @@ section("disconnecting ends the session and unplugs the wallet");
 // it is still connected; clearing only the wallet leaves a valid session for an
 // address the person can no longer see.
 {
-  const page = await openPage({ viewport: { width: 1280, height: 800 } });
+  const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   let signedIn = true;
   await page.route("**/api/auth/whoami", (r) => r.fulfill({ json: { signedIn: true, address: "0xabc", accountId: "0xdef", hasDelegate: true } }));
   await page.route("**/api/health", (r) => r.fulfill({ json: { ok: true, config: { groq: true } } }));
@@ -350,7 +341,7 @@ section("every control is big enough to hit with a thumb");
 // 44px is the floor on mobile. The landing CTA was 39.5px and the back-link on
 // the sign-in screen was 20px, which is the size of the text inside it.
 for (const path of ["/", "/signin"]) {
-  const phone = await openPage({ viewport: { width: 390, height: 844 } });
+  const phone = await browser.newPage({ viewport: { width: 390, height: 844 } });
   await phone.route("**/api/auth/whoami", (r) => r.fulfill({ json: { signedIn: false } }));
   await phone.route("**/api/health", (r) => r.fulfill({ json: { ok: true, config: { groq: true } } }));
   await phone.goto(BASE + path, { waitUntil: "networkidle" });
@@ -388,7 +379,7 @@ check("the reply is shown", body.includes("shellfish allergy"));
 // A done frame with no deltas must still render the answer. It used to say
 // nothing at all, silently, because the turn reads `text` and the payload names
 // it `reply`.
-const nodelta = await openPage({ viewport: { width: 1280, height: 900 } });
+const nodelta = await browser.newPage({ viewport: { width: 1280, height: 900 } });
 await nodelta.route("**/api/auth/whoami", (r) => r.fulfill({ json: { signedIn: true, address: ADDRESS, accountId: ACCOUNT, hasDelegate: true } }));
 await nodelta.route("**/api/today", (r) => r.fulfill({ json: { tasks: [], history: [], dueCount: 0, staleCount: 0, coverage: "complete" } }));
 await nodelta.route("**/api/chat", (r) =>
@@ -429,7 +420,7 @@ section("the rail collapses without clipping itself");
 // A collapsed rail hides the address block, so if the exit lived only inside it,
 // collapsing the rail would take away the only way to sign out.
 {
-  const c = await openPage({ viewport: { width: 1280, height: 900 } });
+  const c = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   await c.route("**/api/auth/whoami", (r) => r.fulfill({ json: { signedIn: true, address: ADDRESS, accountId: ACCOUNT, hasDelegate: true } }));
   await c.route("**/api/account/deployment", (r) => r.fulfill({ json: { packageId: "0xpkg", registryId: "0xreg", network: "mainnet", registryOk: true, registryDetail: "" } }));
   await c.route("**/api/health", (r) => r.fulfill({ json: { ok: true, config: { delegate: true, groq: true, session: true } } }));

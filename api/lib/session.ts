@@ -318,16 +318,18 @@ export function cookieHeader(name: string, value: string, maxAgeSeconds: number)
     "SameSite=Lax",
     `Max-Age=${maxAgeSeconds}`,
   ];
-  // Unconditional now. It used to be production-only, purely so the cookie would
-  // work over plain http on localhost -- which meant that on any dev machine the
-  // signed challenge and the session cookie went out unencrypted, and Sui wallets
-  // refused the origin outright with a "not secure" warning that reads like an
-  // attack. The dev server now runs on TLS (vite.config.ts, @vitejs/plugin-
-  // basic-ssl), so there is no plain-http dev left to accommodate.
+  // Production only, and it has to stay that way while dev is plain http: a
+  // `Secure` cookie is dropped outright by the browser over http, so setting it
+  // unconditionally on a localhost dev server means the session never arrives and
+  // sign-in fails with nothing to look at. No error, just no cookie.
   //
-  // If SESSION_COOKIE ever needs to work over http -- a tunnel that terminates TLS
-  // somewhere odd, say -- make that an explicit opt-out rather than the default.
-  parts.push("Secure");
+  // That is the real cost of running dev without TLS, and it is the reason the
+  // dev server was briefly put behind a self-signed cert: then this could be
+  // unconditional and the signed challenge would not travel in the clear. Reverted
+  // because a permanently untrusted origin is a worse trade for a wallet app than
+  // a localhost-only caveat -- and because a warning a local developer can click
+  // past is not the warning that matters. It is not, on loopback.
+  if (process.env.NODE_ENV === "production") parts.push("Secure");
   return parts.join("; ");
 }
 
