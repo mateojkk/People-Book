@@ -12,7 +12,10 @@
  */
 export function Landing({ onSignIn }: { onSignIn: () => void }) {
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col justify-center px-6 py-12">
+    <div
+      data-screen="landing"
+      className="mx-auto flex min-h-screen w-full max-w-3xl flex-col justify-center px-6 py-12"
+    >
       <div className="flex items-center gap-2.5">
         <Mark />
         <span className="text-sm font-bold tracking-tight">People Book</span>
@@ -59,7 +62,7 @@ export function Landing({ onSignIn }: { onSignIn: () => void }) {
           </div>
         ))}
       </dl>
-    </main>
+    </div>
   );
 }
 

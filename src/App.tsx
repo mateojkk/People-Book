@@ -31,12 +31,19 @@ interface Whoami {
 type Route = "landing" | "signin" | "app";
 
 /**
- * Three routes, decided by hand.
+ * Three routes, decided by hand. No router dependency for three paths.
  *
- * No router dependency for three paths. The rule that matters is the gate: the
- * workspace is only ever reachable with a session and a granted account, so a
- * deep link to /app without them lands on the screen that explains what is
- * missing rather than on a half-working shell.
+ * ── Auth never moves you ──────────────────────────────────────────────────────
+ * There is no redirect anywhere in this file, and that is deliberate. There was:
+ * signing in while sitting on the landing page threw you straight into the app,
+ * which meant the page you chose was replaced by one you did not ask for the
+ * moment a background refetch finished. It is disorienting in a browser and
+ * baffling in a deep link.
+ *
+ * So authentication changes what a route *renders*, never where you are.
+ * `/app` without a granted account renders the setup screen in place, at `/app`,
+ * rather than bouncing you to `/signin`. Moving on is something you do, not
+ * something the app does to you.
  */
 function routeFor(pathname: string): Route {
   if (pathname.startsWith("/signin")) return "signin";
@@ -45,7 +52,7 @@ function routeFor(pathname: string): Route {
 }
 
 export default function App() {
-  const { account, state, signIn } = useSignIn();
+  const { account, state, signIn, disconnect } = useSignIn();
   const [path, setPath] = useState(() => window.location.pathname);
   const go = useCallback((to: string) => {
     window.history.pushState({}, "", to);
@@ -120,31 +127,27 @@ export default function App() {
   const route = routeFor(path);
   const ready = Boolean(who?.signedIn && who.accountId && who.hasDelegate);
 
-  // Someone signed in without a granted account is on the setup step, not in the
-  // app. Sending them in anyway produced a shell where every write failed as
-  // unauthorized, with no explanation anywhere on screen.
-  useEffect(() => {
-    if (route === "app" && !ready && who?.signedIn !== undefined) go("/signin");
-    if (route === "landing" && ready) go("/app");
-    // Only react to readiness changing, not on every render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [route, ready, who?.signedIn]);
-
   if (route === "landing") {
     return <Landing onSignIn={() => go("/signin")} />;
   }
 
-  if (route === "signin") {
+  // /signin always shows this, whatever the auth state. /app shows it too when
+  // there is no granted account -- in place, at /app, with the URL left alone.
+  // Nothing here redirects: signing in does not move you off the page you chose.
+  if (route === "signin" || !ready) {
     return (
       <SignIn
         state={state}
         onSignIn={() => void signIn()}
+        onDisconnect={() => void disconnect(() => go("/"))}
         walletConnected={Boolean(account?.address)}
         address={who?.signedIn ? who.address : undefined}
         hasAccount={Boolean(who?.accountId)}
         step={ownership.step}
         onCreateAndGrant={() => void ownership.start()}
         onClaim={(id) => void ownership.claimAccountId(id)}
+        accountDraft={accountIdDraft}
+        setAccountDraft={setAccountIdDraft}
         busy={ownership.step === "creating" || ownership.step === "granting"}
       />
     );
@@ -155,6 +158,7 @@ export default function App() {
       tab={tab}
       setTab={setTab}
       address={who?.address}
+      onDisconnect={() => void disconnect(() => go("/"))}
       version={version}
       onForget={forget}
       error={error}

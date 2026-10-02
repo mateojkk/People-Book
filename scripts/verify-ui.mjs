@@ -120,9 +120,9 @@ check("with no jargon in the claim itself", !/delegate key|namespace|relayer|wal
 // and the vertical rhythm both have to come in, or every screen reads as a poster
 // with one sentence on it.
 const landingBox = await anon.evaluate(() => {
-  const main = document.querySelector("main");
-  const cs = getComputedStyle(main);
-  return { width: main.getBoundingClientRect().width, padTop: parseFloat(cs.paddingTop), padBottom: parseFloat(cs.paddingBottom) };
+  const el = document.querySelector('[data-screen="landing"]');
+  const cs = getComputedStyle(el);
+  return { width: el.getBoundingClientRect().width, padTop: parseFloat(cs.paddingTop), padBottom: parseFloat(cs.paddingBottom) };
 });
 check("the landing column has room to breathe", landingBox.width >= 700 && landingBox.width <= 820, `${landingBox.width}px`);
 check("and is not floating in a tall empty page", landingBox.padTop <= 56, `${landingBox.padTop}px`);
@@ -134,11 +134,24 @@ await anon.close();
 await page.goto(BASE + "/", { waitUntil: "networkidle" });
 await page.waitForTimeout(500);
 
-const emptyText = await page.evaluate(() => {
-  const main = document.querySelector("main");
-  return (main?.innerText ?? "").trim();
+// The landing page must NOT be the <main> landmark: that belongs to the chat
+// thread, and the chat's own assertions rely on it. This check used to pass only
+// because the redirect bug bounced "/" to "/app", so <main> was the chat and read
+// empty. With that fixed it was landing text in <main>, which is what a real
+// visitor was always getting.
+const claimed = await page.evaluate(() => {
+  const chat = document.querySelector("main");
+  return { hasMain: Boolean(chat), landing: Boolean(document.querySelector('[data-screen="landing"]')) };
 });
-check("no headline or explanation in the column", !/remember|people|owes|birthday|everyone/i.test(emptyText), JSON.stringify(emptyText.slice(0, 120)));
+check("the landing page does not claim the chat's <main>", claimed.hasMain === false && claimed.landing === true, JSON.stringify(claimed));
+
+// Everything below this line is about the chat, and this page is signed in with a
+// granted account, so it goes to /app to be asserted on. It used not to need
+// saying: navigating to "/" bounced to the workspace on its own via the auth
+// redirect, so the composer assertions were quietly running against the app while
+// claiming to be about the landing page.
+await page.goto(BASE + "/app", { waitUntil: "networkidle" });
+await page.waitForTimeout(500);
 
 // ── The composer ─────────────────────────────────────────────────────────────
 section("the composer is one compact row");
@@ -173,6 +186,69 @@ const nested = await page.evaluate(() => {
   return found;
 });
 check("nothing is nested inside a form control", nested.length === 0, nested.join(", "));
+
+// ── Signing in must not move you ─────────────────────────────────────────────
+section("being signed in never changes which page you are on");
+
+// This was a redirect keyed on auth state: signing in while sitting on the
+// landing page threw you into the app. The page you chose got replaced by one
+// you did not ask for, the moment a background refetch finished.
+for (const start of ["/", "/signin", "/app"]) {
+  let signedIn = false;
+  const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  await page.route("**/api/auth/whoami", (r) =>
+    r.fulfill({ json: signedIn ? { signedIn: true, address: "0xabc", accountId: "0xdef", hasDelegate: true } : { signedIn: false } }),
+  );
+  await page.route("**/api/health", (r) => r.fulfill({ json: { ok: true, config: { groq: true } } }));
+  await page.goto(BASE + start, { waitUntil: "networkidle" });
+  const before = new URL(page.url()).pathname;
+  signedIn = true;
+  await page.reload({ waitUntil: "networkidle" });
+  const after = new URL(page.url()).pathname;
+  check(`signing in on ${start} leaves you on ${start}`, before === after, `moved to ${after}`);
+  await page.close();
+}
+
+// A deep link to /app with no account shows the setup screen AT /app. It used to
+// bounce to /signin, which meant the address bar lied about where you were.
+{
+  const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  await page.route("**/api/auth/whoami", (r) => r.fulfill({ json: { signedIn: false } }));
+  await page.route("**/api/health", (r) => r.fulfill({ json: { ok: true, config: { groq: true } } }));
+  await page.goto(BASE + "/app", { waitUntil: "networkidle" });
+  await page.waitForTimeout(400);
+  check("/app without an account keeps its URL", new URL(page.url()).pathname === "/app");
+  check("/app without an account shows the setup screen", await page.getByText("Sign in", { exact: false }).first().isVisible());
+  await page.close();
+}
+
+// ── Disconnect ───────────────────────────────────────────────────────────────
+section("disconnecting ends the session and unplugs the wallet");
+
+// Both halves, deliberately. Clearing only the cookie leaves dapp-kit believing
+// it is still connected; clearing only the wallet leaves a valid session for an
+// address the person can no longer see.
+{
+  const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  let signedIn = true;
+  await page.route("**/api/auth/whoami", (r) => r.fulfill({ json: { signedIn: true, address: "0xabc", accountId: "0xdef", hasDelegate: true } }));
+  await page.route("**/api/health", (r) => r.fulfill({ json: { ok: true, config: { groq: true } } }));
+  await page.route("**/api/auth/logout", async (r) => {
+    signedIn = false;
+    await r.fulfill({ json: { ok: true } });
+  });
+  await page.goto(BASE + "/app", { waitUntil: "networkidle" });
+  await page.waitForTimeout(400);
+  // In the workspace, not on a setup screen nobody returns to. The only Disconnect
+  // button used to live there, so a fully set-up user had no way to leave at all.
+  const leave = page.getByRole("button", { name: /Disconnect/i }).first();
+  check("a set-up user can disconnect from the rail", await leave.isVisible());
+  await leave.click();
+  await page.waitForTimeout(600);
+  check("disconnecting lands you on the landing page", new URL(page.url()).pathname === "/");
+  check("disconnecting ends the session", signedIn === false);
+  await page.close();
+}
 
 // ── Tap targets ─────────────────────────────────────────────────────────────
 section("every control is big enough to hit with a thumb");
@@ -255,6 +331,21 @@ check("nothing overflows horizontally", !overflow);
 
 // ── The collapsed rail ──────────────────────────────────────────────────────
 section("the rail collapses without clipping itself");
+
+// A collapsed rail hides the address block, so if the exit lived only inside it,
+// collapsing the rail would take away the only way to sign out.
+{
+  const c = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  await c.route("**/api/auth/whoami", (r) => r.fulfill({ json: { signedIn: true, address: ADDRESS, accountId: ACCOUNT, hasDelegate: true } }));
+  await c.route("**/api/account/deployment", (r) => r.fulfill({ json: { packageId: "0xpkg", registryId: "0xreg", network: "mainnet", registryOk: true, registryDetail: "" } }));
+  await c.route("**/api/health", (r) => r.fulfill({ json: { ok: true, config: { delegate: true, groq: true, session: true } } }));
+  await c.goto(BASE + "/app", { waitUntil: "networkidle" });
+  await c.waitForTimeout(400);
+  await c.getByRole("button", { name: /collapse/i }).first().click();
+  await c.waitForTimeout(500);
+  check("a collapsed rail still offers a way out", await c.getByRole("button", { name: "Disconnect wallet" }).isVisible());
+  await c.close();
+}
 
 await page.getByRole("button", { name: /Collapse sidebar/i }).click();
 await page.waitForTimeout(300);

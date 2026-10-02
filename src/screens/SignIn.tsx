@@ -1,5 +1,4 @@
 import { ConnectButton } from "../lib/auth.ts";
-import { useState } from "react";
 import { Mark } from "./Landing.tsx";
 import type { SignInState } from "../lib/auth.ts";
 
@@ -18,17 +17,23 @@ import type { SignInState } from "../lib/auth.ts";
 export function SignIn({
   state,
   onSignIn,
+  onDisconnect,
   walletConnected,
   address,
   hasAccount,
   step,
   onCreateAndGrant,
   onClaim,
+  accountDraft,
+  setAccountDraft,
   busy,
   error,
 }: {
   state: SignInState;
   onSignIn: () => void;
+  onDisconnect: () => void;
+  accountDraft: string;
+  setAccountDraft: (v: string) => void;
   /** Whether a wallet is plugged in, which is a different step from signing. */
   walletConnected: boolean;
   address?: string;
@@ -40,7 +45,6 @@ export function SignIn({
   error?: string;
 }) {
   const working = busy;
-  const [accountDraft, setAccountDraft] = useState("");
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-xl flex-col justify-center px-6 py-12">
@@ -177,6 +181,21 @@ export function SignIn({
             in one transaction on Sui, and the account goes quiet immediately —
             that is the whole revocation story, and there is no other way to take
             it away.
+          </p>
+
+          {/* Leaving here is not the same as revoking, and conflating them would
+              be dishonest. This ends the session and unplugs the wallet; the
+              delegate key stays on the account until it is removed on chain. */}
+          <button
+            onClick={onDisconnect}
+            className="mt-3 text-[11.5px] text-faint transition-colors hover:text-muted"
+          >
+            Disconnect wallet
+          </button>
+
+          <p className="mt-1.5 text-[11px] leading-5 text-faint">
+            Ends this session and unplugs the wallet. The access you granted stays
+            on chain until you remove it there.
           </p>
         </section>
       )}

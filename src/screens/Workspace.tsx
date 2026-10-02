@@ -74,6 +74,7 @@ export function Workspace({
   tab,
   setTab,
   address,
+  onDisconnect,
   version,
   onForget,
   error,
@@ -82,6 +83,8 @@ export function Workspace({
   tab: Tab;
   setTab: (t: Tab) => void;
   address?: string;
+  /** Ends the session and unplugs the wallet. See the note below. */
+  onDisconnect: () => void;
   version: number;
   onForget: (id: string) => void;
   error?: string | null;
@@ -140,12 +143,36 @@ export function Workspace({
         </nav>
 
         <div className="mt-auto">
+          {sidebarCollapsed && (
+            <button
+              type="button"
+              onClick={onDisconnect}
+              aria-label="Disconnect wallet"
+              title="Disconnect wallet"
+              className="mx-auto mb-1 grid h-11 w-11 place-items-center rounded-lg text-faint transition-colors hover:bg-panel hover:text-text"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <path d="M16 17l5-5-5-5M21 12H9" />
+              </svg>
+            </button>
+          )}
           {!sidebarCollapsed && (
             <div className="px-4 py-2.5">
               <p className="mono truncate text-[11px] text-faint">
                 {address?.slice(0, 6)}…{address?.slice(-4)}
               </p>
               <p className="mt-1 text-[11px] text-faint">Yours, on Sui</p>
+              {/* Leaving is not the same as revoking. This ends the session and
+                  unplugs the wallet; the delegate key stays on the account until
+                  it is removed on chain, which is a separate thing to do. */}
+              <button
+                type="button"
+                onClick={onDisconnect}
+                className="mt-1.5 text-[11px] text-faint transition-colors hover:text-muted"
+              >
+                Disconnect
+              </button>
             </div>
           )}
           <div

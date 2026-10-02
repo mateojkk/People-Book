@@ -74,7 +74,33 @@ export function useSignIn() {
     }
   }, [account?.address, dAppKit]);
 
-  return { account, state, signIn };
+  /**
+   * Disconnects the wallet AND ends the session.
+   *
+   * Both halves, because leaving either one behind is a worse state than either:
+   * clearing only the cookie leaves the wallet connected and dapp-kit still
+   * believes it is signed in, so the app looks ready while the session is gone;
+   * clearing only the wallet leaves a valid session cookie for an address the
+   * person can no longer see. `onDone` runs once both are done.
+   */
+  const disconnect = useCallback(
+    async (onDone?: () => void) => {
+      try {
+        await api.post("/api/auth/logout");
+      } catch {
+        // A failed logout must not strand the wallet connected. Carry on.
+      }
+      try {
+        await dAppKit.disconnectWallet();
+      } finally {
+        setState({ phase: "disconnected" });
+        onDone?.();
+      }
+    },
+    [dAppKit],
+  );
+
+  return { account, state, signIn, disconnect };
 }
 
 export { ConnectButton };
