@@ -42,7 +42,7 @@ import { capture } from "./capture.ts";
 import { computePatterns, type Pattern } from "./patterns.ts";
 import { groqFetch } from "./groq.ts";
 import { computeNudges } from "./ranking.ts";
-import { phraseNudges } from "./capture.ts";
+import { collapseById, isLive } from "../../shared/memory-codec.ts";
 import type { PeopleBookStore } from "./store.ts";
 import type { MemoryCandidate, Nudge, PersonMemory } from "../../shared/types.ts";
 import { CONFIRM_THRESHOLD } from "../../shared/types.ts";
@@ -126,54 +126,80 @@ export async function takeTurn(
     if (previous) saidAlready.delete(key(previous.person, previous.text));
   }
 
-  for (const candidate of extraction.candidates) {
-    // Below the threshold a guess is worse than nothing, so it is not written and
-    // not mentioned. This is the same bar the confirm path used.
-    if (candidate.confidence < CONFIRM_THRESHOLD) continue;
+  // ── 1b. Write ──────────────────────────────────────────────────────────────
+  //
+  // Parallel, and it was sequential. Each write is a round trip to the relayer,
+  // and a message that yields three candidates used to pay for them one after the
+  // other -- three sequential network waits where one concurrent batch is the
+  // same total time. allSettled rather than all, so one failed write still does
+  // not cost the turn.
+  const writes = extraction.candidates
+    .filter((candidate) => {
+      if (candidate.confidence < CONFIRM_THRESHOLD) return false;
+      const candidateKey = key(candidate.person, candidate.text);
+      if (saidAlready.has(candidateKey)) return false;
+      saidAlready.add(candidateKey);
+      return true;
+    })
+    .map((candidate) =>
+      store
+        .remember({
+          person: candidate.person,
+          type: candidate.type,
+          text: candidate.text,
+          occurredAt: candidate.occurredAt,
+          dueAt: candidate.dueAt,
+          // Kept as "MM-DD" rather than resolved to a date, so it keeps coming
+          // round next year instead of quietly expiring.
+          anniversary: candidate.anniversary,
+          // The user's own reason, for corrections only. This field is the entire
+          // value of the type and it is easy to omit here, because nothing breaks
+          // if you do -- the memory is written, the panel renders, and the reason
+          // is simply gone. That is the failure mode this comment exists to stop.
+          ...(candidate.reason ? { reason: candidate.reason } : {}),
+          // Told to us is confirmed. See the note at the top of this file. This is
+          // load-bearing: makeMemory defaults to "inferred", and only "confirmed"
+          // memories may create nudges, so saving without it writes memories that
+          // sit in the ledger forever and can never remind you of anything.
+          confidence: "confirmed",
+          // A promise you have just stated is outstanding by definition.
+          status: candidate.type === "promise" ? "open" : candidate.status,
+        } as Parameters<PeopleBookStore["remember"]>[0])
+        .then((written) => ({ ok: true as const, written }))
+        // One failed write must not cost the whole turn. The reply still happens
+        // and the ledger simply does not gain this one.
+        .catch((error: unknown) => ({ ok: false as const, error })),
+    );
 
-    const candidateKey = key(candidate.person, candidate.text);
-    if (saidAlready.has(candidateKey)) continue;
-    saidAlready.add(candidateKey);
-
-    try {
-      const written = await store.remember({
-        person: candidate.person,
-        type: candidate.type,
-        text: candidate.text,
-        occurredAt: candidate.occurredAt,
-        dueAt: candidate.dueAt,
-        // Kept as "MM-DD" rather than resolved to a date, so it keeps coming round
-        // next year instead of quietly expiring.
-        anniversary: candidate.anniversary,
-        // The user's own reason, for corrections only. This field is the entire
-        // value of the type and it is easy to omit here, because nothing breaks
-        // if you do -- the memory is written, the panel renders, and the reason
-        // is simply gone. That is the failure mode this comment exists to stop.
-        ...(candidate.reason ? { reason: candidate.reason } : {}),
-        // Told to us is confirmed. See the note at the top of this file.
-        //
-        // This field is load-bearing and easy to miss: makeMemory defaults it to
-        // "inferred", and only "confirmed" memories are allowed to create nudges.
-        // Saving without it writes memories that sit in the ledger forever and can
-        // never once remind you of anything.
-        confidence: "confirmed",
-        // A promise you have just stated is outstanding by definition. Forcing
-        // the model's status here would let it file a live commitment as "kept",
-        // which quietly closes it and means it never nags you again.
-        status: candidate.type === "promise" ? "open" : candidate.status,
-      } as Parameters<PeopleBookStore["remember"]>[0]);
-
-      saved.push({ id: written.id, person: written.person, text: written.text, type: written.type });
-    } catch (error) {
-      // One failed write must not cost the whole turn. The reply still happens
-      // and the ledger simply does not gain this one.
+  const settled = writes.length ? await Promise.allSettled(writes) : [];
+  const fresh: PersonMemory[] = [];
+  for (const result of settled) {
+    if (result.status === "rejected") continue;
+    if (!result.value.ok) {
       if (!extraction.error) {
-        extraction.error = `One thing could not be saved: ${error instanceof Error ? error.message : String(error)}`;
+        extraction.error = `One thing could not be saved: ${result.value.error instanceof Error ? result.value.error.message : String(result.value.error)}`;
       }
+      continue;
     }
+    fresh.push(result.value.written);
+    saved.push({
+      id: result.value.written.id,
+      person: result.value.written.person,
+      text: result.value.written.text,
+      type: result.value.written.type,
+    });
   }
 
-  const after = saved.length ? (await store.listLive()).memories : memories;
+  // ── 1c. Fold the new memories in locally ───────────────────────────────────
+  //
+  // This used to re-enumerate the entire ledger after writing, which is a full
+  // round trip to the relayer on every single message, purely to see memories we
+  // already hold in our hands. The written objects are the real ones -- the store
+  // made them -- so merging them and folding locally gives the same answer without
+  // the network. collapseById is the same fold, and it matters here: a message
+  // that corrects something already in the book must not leave the old claim
+  // visible for the rest of the turn.
+  const after = fresh.length ? collapseById([...memories, ...fresh]).filter(isLive) : memories;
 
   // ── 2. Volunteer something, unprompted ──────────────────────────────────────
   //
@@ -186,11 +212,10 @@ export async function takeTurn(
   const threadSubjects = [message, ...history.map((h) => h.text)].join("\n").toLowerCase();
   const due = computeNudges({ memories: after }).nudges.filter((n) => !dismissed(n, threadSubjects));
   const volunteered = due.slice(0, 2);
-  const phrased = await phraseNudges(volunteered);
 
   // ── 3. Answer ───────────────────────────────────────────────────────────────
   const cited = pickCitations(after, threadSubjects, volunteered);
-  const reply = await composeReply({ message, history, memories: after, phrased, cited, saved, onDelta: hooks.onDelta });
+  const reply = await composeReply({ message, history, memories: after, volunteered, cited, saved, onDelta: hooks.onDelta });
 
   return {
     reply,
@@ -253,7 +278,8 @@ async function composeReply(args: {
   message: string;
   history: readonly PriorTurn[];
   memories: readonly PersonMemory[];
-  phrased: readonly string[];
+  /** Deterministic nudge sentences, handed over to be woven in rather than reworded. */
+  volunteered: readonly Nudge[];
   cited: readonly { id: string; person: string; text: string }[];
   saved: readonly SavedMemory[];
   /**
@@ -301,7 +327,9 @@ async function composeReply(args: {
               args.saved.length
                 ? `\nJust remembered from that message: ${args.saved.map((s) => `"${s.text}" (about ${s.person})`).join("; ")}`
                 : "",
-              args.phrased.length ? `\nWorth bringing up unprompted: ${args.phrased.join(" | ")}` : "",
+              args.volunteered.length
+                ? `\nWorth bringing up unprompted: ${args.volunteered.map((n) => n.text).join(" | ")}`
+                : "",
               "\nReply as their assistant. Two or three sentences, plain prose.",
           ].filter(Boolean).join("\n"),
         },
@@ -480,8 +508,9 @@ ${lines.join("\n")}`;
  */
 function fallbackReply(args: {
   message: string;
-  phrased: readonly string[];
   saved: readonly SavedMemory[];
+  /** Absent when the caller has nothing to volunteer. */
+  volunteered?: readonly Nudge[];
 }): string {
   const parts: string[] = [];
   if (args.saved.length) {
@@ -491,7 +520,7 @@ function fallbackReply(args: {
         : `Got it, ${args.saved.length} things noted.`,
     );
   }
-  for (const line of args.phrased) parts.push(line);
+  for (const nudge of args.volunteered ?? []) parts.push(nudge.text);
   if (!parts.length) return "I'm listening.";
   return parts.join(" ");
 }

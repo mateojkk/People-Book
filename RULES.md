@@ -225,6 +225,25 @@ for less movement gets the static gradient, not the video.
 
 ---
 
+## 22. Serve the dev server over TLS, and mark the cookie Secure
+
+The session cookie was `Secure` only in production, purely so it would work over
+plain http on localhost. That is a small convenience bought with two real
+problems: the signed challenge and the cookie went out unencrypted on every dev
+machine, and Sui wallets refused the origin with a "your connection is not secure"
+warning. The warning reads like an attack, and it is not one -- but it trains
+people to click past exactly that kind of prompt, which is the worst possible
+outcome for a wallet app.
+
+Localhost traffic never leaves the machine, so this was never exploitable in dev.
+It was still wrong, because "harmless on my machine" is how the same shortcut
+ends up on a staging host. The dev server now runs on TLS via
+@vitejs/plugin-basic-ssl and `Secure` is unconditional. The browser asks once
+about the self-signed cert; that is a fair price for an origin that is genuinely
+secure afterwards.
+
+---
+
 ## The one above the others
 
 Everything here is a variation of it: **the gap between what was verified and

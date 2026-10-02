@@ -15,7 +15,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { computeNudges, elisionLine } from "./lib/ranking.ts";
-import { capture, phraseNudges } from "./lib/capture.ts";
+import { capture } from "./lib/capture.ts";
 import { takeTurn } from "./lib/chat.ts";
 import { tasksFor, composeNotice, noticeHistory } from "./lib/tasks.ts";
 import { computePatterns } from "./lib/patterns.ts";
@@ -579,15 +579,12 @@ app.get("/api/nudges", async (c) => {
     const { memories } = memoryDisabled ? { memories: [] as PersonMemory[] } : await resolved.store.listLive();
     const ranked = computeNudges({ memories, memoryDisabled, dismissed: dismissals, now: new Date() });
 
-    // Phrasing is the only model involvement here, and it is skippable: every
-    // nudge already has a deterministic sentence behind it.
-    let nudges = ranked.nudges;
-    if (!memoryDisabled && nudges.length > 0) {
-      const phrased = await phraseNudges(
-        nudges.map((n) => ({ person: n.person, text: n.text, kind: n.kind })),
-      );
-      nudges = nudges.map((n, idx) => ({ ...n, text: phrased[idx] ?? n.text }));
-    }
+    // No model call to reword these. Every nudge already has a deterministic
+    // sentence, and the one that was here cost a full extra round trip -- about a
+    // second and 1600 tokens -- to rephrase text that was already fine. It also
+    // made the same sentence read differently depending on whether the model was
+    // reachable, which is the opposite of what a reminder should do.
+    const nudges = ranked.nudges;
 
     const payload: NudgeSet & { elisionNotices: string[] } = {
       nudges,

@@ -363,46 +363,4 @@ async function extractRaw(
   return (JSON.parse(args) as { candidates?: unknown }).candidates ?? [];
 }
 
-/**
- * Phrases a set of memories as a short, natural opening.
- *
- * Optional by design. Ranking in ranking.ts already produces a usable sentence
- * for every nudge without a model, so if Groq is down the product still works.
- * Losing the prose is a downgrade; losing the memory would be a failure.
- */
-export async function phraseNudges(
-  items: { person: string; text: string; kind: string }[],
-): Promise<string[]> {
-  if (!process.env.GROQ_API_KEY || items.length === 0) return items.map((i) => i.text);
-
-  try {
-    const response = await groqFetch(
-      [
-        {
-          role: "system",
-          content:
-            "Rewrite each reminder as one warm, plain sentence, max 18 words. Never invent, add, or infer any fact that is not in the reminder. Never add a date or name that is not present. No preamble, no quotes. Return a JSON array of strings, same length and order as the input.",
-        },
-        { role: "user", content: JSON.stringify(items) },
-      ],
-      { temperature: 0.3, label: "phrase", jsonObject: true },
-    );
-
-    const payload = (await response.json()) as { choices?: { message?: { content?: string } }[] };
-    const content = payload.choices?.[0]?.message?.content;
-    if (!content) return items.map((i) => i.text);
-
-    const parsed = JSON.parse(content) as { sentences?: string[] };
-    const sentences = parsed.sentences;
-    if (!Array.isArray(sentences) || sentences.length !== items.length) {
-      // Length mismatch means the model returned something we cannot align with
-      // the source facts, so we keep the deterministic phrasing instead.
-      return items.map((i) => i.text);
-    }
-    return sentences.map((s, idx) => (typeof s === "string" && s.trim() ? s.trim() : items[idx]!.text));
-  } catch {
-    return items.map((i) => i.text);
-  }
-}
-
 export { CONFIRM_THRESHOLD };

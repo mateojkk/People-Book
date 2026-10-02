@@ -318,8 +318,16 @@ export function cookieHeader(name: string, value: string, maxAgeSeconds: number)
     "SameSite=Lax",
     `Max-Age=${maxAgeSeconds}`,
   ];
-  // Secure is omitted in dev so the cookie works over plain http on localhost.
-  if (process.env.NODE_ENV === "production") parts.push("Secure");
+  // Unconditional now. It used to be production-only, purely so the cookie would
+  // work over plain http on localhost -- which meant that on any dev machine the
+  // signed challenge and the session cookie went out unencrypted, and Sui wallets
+  // refused the origin outright with a "not secure" warning that reads like an
+  // attack. The dev server now runs on TLS (vite.config.ts, @vitejs/plugin-
+  // basic-ssl), so there is no plain-http dev left to accommodate.
+  //
+  // If SESSION_COOKIE ever needs to work over http -- a tunnel that terminates TLS
+  // somewhere odd, say -- make that an explicit opt-out rather than the default.
+  parts.push("Secure");
   return parts.join("; ");
 }
 

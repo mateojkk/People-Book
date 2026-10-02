@@ -222,7 +222,7 @@ openssl rand -hex 32  # -> SESSION_SECRET
 # add GROQ_API_KEY from https://console.groq.com
 
 npm run verify         # codec + ranking assertions, no network needed
-npm run dev            # api on :8787, ui on :5173
+npm run dev            # api on :8787, ui on https://localhost:5173 (TLS)
 ```
 
 Then: connect a Sui wallet, sign the challenge, create your Walrus Memory
@@ -418,7 +418,7 @@ openssl rand -hex 32  # -> SESSION_SECRET
 # add GROQ_API_KEY from https://console.groq.com
 
 npm run verify         # codec + ranking assertions, no network needed
-npm run dev            # api on :8787, ui on :5173
+npm run dev            # api on :8787, ui on https://localhost:5173 (TLS)
 ```
 
 Then: connect a Sui wallet, sign the challenge, create your Walrus Memory
