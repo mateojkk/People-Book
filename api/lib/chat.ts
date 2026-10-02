@@ -40,13 +40,13 @@
 
 import { capture } from "./capture.ts";
 import { computePatterns, type Pattern } from "./patterns.ts";
+import { groqFetch } from "./groq.ts";
 import { computeNudges } from "./ranking.ts";
 import { phraseNudges } from "./capture.ts";
 import type { PeopleBookStore } from "./store.ts";
 import type { MemoryCandidate, Nudge, PersonMemory } from "../../shared/types.ts";
 import { CONFIRM_THRESHOLD } from "../../shared/types.ts";
 
-const MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
 
 /** One prior turn, in the order it happened. */
 export interface PriorTurn {
@@ -284,17 +284,11 @@ async function composeReply(args: {
   const standing = formatCorrections(corrections);
 
   try {
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
-      body: JSON.stringify({
-        model: MODEL,
-        temperature: 0.4,
-        stream: Boolean(args.onDelta),
-        messages: [
-          { role: "system", content: REPLY_SYSTEM + standing },
-          {
-            role: "user",
+    const response = await groqFetch(
+      [
+        { role: "system", content: REPLY_SYSTEM + standing },
+        {
+          role: "user",
             content: [
               args.history.length
                 ? `Conversation so far:\n${args.history
@@ -309,13 +303,11 @@ async function composeReply(args: {
                 : "",
               args.phrased.length ? `\nWorth bringing up unprompted: ${args.phrased.join(" | ")}` : "",
               "\nReply as their assistant. Two or three sentences, plain prose.",
-            ].filter(Boolean).join("\n"),
-          },
-        ],
-      }),
-    });
-
-    if (!response.ok) return fallbackReply(args);
+          ].filter(Boolean).join("\n"),
+        },
+      ],
+      { temperature: 0.4, stream: Boolean(args.onDelta), label: "reply" },
+    );
 
     // Stream when we can. A non-stream body is still read fine, so a proxy that
     // buffers the response degrades to the old behaviour rather than breaking.

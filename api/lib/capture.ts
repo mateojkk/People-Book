@@ -18,6 +18,7 @@
  * is worse than no capture, because the user cannot tell which happened.
  */
 
+import { groqFetch } from "./groq.ts";
 import {
   CONFIRM_THRESHOLD,
   MEMORY_TYPES,
@@ -27,7 +28,6 @@ import {
 } from "../../shared/types.ts";
 import { recurringDate, monthForDayOnly, isFullMonthDay } from "./dates.ts";
 
-const MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
 
 const SYSTEM = `You extract durable facts about people from a message someone sent to their private assistant.
 
@@ -272,19 +272,11 @@ async function extractRaw(
   knownPeople: readonly string[],
   history: readonly { role: "you" | "assistant"; text: string }[] = [],
 ): Promise<unknown> {
-  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      temperature: 0,
-      messages: [
-        { role: "system", content: SYSTEM },
-        {
-          role: "user",
+  const response = await groqFetch(
+    [
+      { role: "system", content: SYSTEM },
+      {
+        role: "user",
           content: [
             `People already in the book: ${knownPeople.length ? knownPeople.join(", ") : "(none yet)"}`,
             // Enough of the thread for a pronoun to resolve, and no more: this is
@@ -297,10 +289,13 @@ async function extractRaw(
               : "",
             `\nTheir latest message:\n${message}`,
           ]
-            .filter(Boolean)
-            .join("\n"),
-        },
-      ],
+          .filter(Boolean)
+          .join("\n"),
+      },
+    ],
+    {
+      temperature: 0,
+      label: "capture",
       tools: [
         {
           type: "function",
@@ -356,16 +351,9 @@ async function extractRaw(
           },
         },
       ],
-      tool_choice: { type: "function", function: { name: "record_candidates" } },
-    }),
-  });
-
-  if (!response.ok) {
-    // The body matters. "Groq responded 400" alone is unactionable -- it does not
-    // say WHICH part of the request was wrong, which is the only useful part.
-    const detail = await response.text().catch(() => "");
-    throw new Error(`Groq responded ${response.status}${detail ? `: ${detail.slice(0, 300)}` : ""}`);
-  }
+      toolChoice: { type: "function", function: { name: "record_candidates" } },
+    },
+  );
 
   const payload = (await response.json()) as {
     choices?: { message?: { tool_calls?: { function?: { arguments?: string } }[] } }[];
@@ -388,24 +376,17 @@ export async function phraseNudges(
   if (!process.env.GROQ_API_KEY || items.length === 0) return items.map((i) => i.text);
 
   try {
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
-      body: JSON.stringify({
-        model: MODEL,
-        temperature: 0.3,
-        messages: [
-          {
-            role: "system",
-            content:
-              "Rewrite each reminder as one warm, plain sentence, max 18 words. Never invent, add, or infer any fact that is not in the reminder. Never add a date or name that is not present. No preamble, no quotes. Return a JSON array of strings, same length and order as the input.",
-          },
-          { role: "user", content: JSON.stringify(items) },
-        ],
-        response_format: { type: "json_object" },
-      }),
-    });
-    if (!response.ok) return items.map((i) => i.text);
+    const response = await groqFetch(
+      [
+        {
+          role: "system",
+          content:
+            "Rewrite each reminder as one warm, plain sentence, max 18 words. Never invent, add, or infer any fact that is not in the reminder. Never add a date or name that is not present. No preamble, no quotes. Return a JSON array of strings, same length and order as the input.",
+        },
+        { role: "user", content: JSON.stringify(items) },
+      ],
+      { temperature: 0.3, label: "phrase", jsonObject: true },
+    );
 
     const payload = (await response.json()) as { choices?: { message?: { content?: string } }[] };
     const content = payload.choices?.[0]?.message?.content;
