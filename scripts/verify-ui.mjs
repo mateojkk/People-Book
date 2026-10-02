@@ -16,6 +16,7 @@
  */
 
 import { chromium } from "playwright";
+import { readFileSync } from "node:fs";
 
 const BASE = process.env.UI_BASE_URL || "http://localhost:5173";
 
@@ -337,6 +338,45 @@ section("disconnecting ends the session and unplugs the wallet");
   await page.close();
 }
 
+// ── The backdrop before the video ────────────────────────────────────────────
+section("the page is not black while the video loads");
+
+// It was, and it failed silently. A Tailwind arbitrary value containing a
+// negative percentage -- bg-[radial-gradient(... at_50%_-8%, ...)] -- is not
+// emitted at all, so the layer rendered with background-image:none and the
+// landing page was a black rectangle with a headline on it for the five seconds
+// before the video arrived. No console error, no warning, no failed assertion:
+// the element existed, was positioned correctly, and painted nothing.
+{
+  const b2 = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  await b2.route("**/api/auth/whoami", (r) => r.fulfill({ json: { signedIn: false } }));
+  await b2.route("**/api/health", (r) => r.fulfill({ json: { ok: true, config: { groq: true } } }));
+  // Abort the video, so this is the pure waiting state with no video to cover it.
+  await b2.route("**/hf_20260424*", (r) => r.abort());
+  await b2.goto(BASE + "/", { waitUntil: "load" });
+  await b2.waitForTimeout(1500);
+
+  const layers = await b2.evaluate(() => {
+    const root = document.querySelector('[aria-hidden="true"]');
+    if (!root) return [];
+    return [...root.children]
+      .filter((k) => k.tagName === "DIV")
+      .map((k) => getComputedStyle(k).backgroundImage);
+  });
+  const painted = layers.filter((bg) => bg && bg !== "none");
+  check("the backdrop actually paints something", painted.length >= 2, JSON.stringify(layers));
+
+  // The real assertion: the top of the page must not be the base colour. That is
+  // what "staring at a black background" actually was.
+  const lit = await b2.evaluate(() => {
+    const el = document.querySelector('[aria-hidden="true"] > div');
+    const r = el.getBoundingClientRect();
+    return { w: r.width, h: r.height };
+  });
+  check("and it covers the viewport while it does it", lit.w >= 1200 && lit.h >= 800, JSON.stringify(lit));
+  await b2.close();
+}
+
 // ── Tap targets ─────────────────────────────────────────────────────────────
 section("every control is big enough to hit with a thumb");
 
@@ -505,6 +545,50 @@ page.on("request", (r) => {
 await page.getByRole("button", { name: "Done" }).first().click();
 await page.waitForTimeout(700);
 check("Done writes a revision rather than deleting", settleCalls.some((u) => u.includes("/settle")), settleCalls.join(","));
+
+// ── The favicon is part of the interface ─────────────────────────────────────
+// It spent a long time as a completely different mark in different colours: an
+// open book drawn in mint green (#6ee7b7) with an orange dot (#fbbf6e) on
+// #0d0f12. None of that is the product's mark or the product's palette, and
+// nothing caught it because a favicon is never rendered by the page -- so no
+// assertion in the rest of this file could see it. Read it as the asset it is,
+// and hold it to the one-accent rule everything else follows.
+section("the favicon is the Mark, in the palette");
+
+const read = (rel) => readFileSync(new URL(rel, import.meta.url), "utf8");
+const css = read("../src/index.css");
+const token = (name) =>
+  css.match(new RegExp(`--color-${name}:\\s*(#[0-9a-f]{6})`, "i"))?.[1]?.toLowerCase();
+const accent = token("accent");
+const base = token("base");
+
+const favicon = read("../src/assets/favicon.svg");
+// Comments stripped first: the note above the drawing names the old colours to
+// explain what changed, and a check that reads prose as palette would fail on
+// its own explanation.
+const drawing = favicon.replace(/<!--[\s\S]*?-->/g, "");
+const hexes = [...new Set((drawing.match(/#[0-9a-f]{6}/gi) ?? []).map((h) => h.toLowerCase()))];
+
+check("the favicon draws something", hexes.length > 0, hexes.join(","));
+check("it uses the accent token, not a hand-picked colour", hexes.includes(accent), `accent=${accent} favicon=${hexes.join(",")}`);
+check("its plate is the page base", hexes.includes(base), `base=${base} favicon=${hexes.join(",")}`);
+check(
+  "and it uses no colour outside the palette",
+  hexes.every((h) => h === accent || h === base),
+  `unexpected: ${hexes.filter((h) => h !== accent && h !== base).join(",")}`,
+);
+
+// Same geometry, so the tab and the header cannot say different things. This
+// compares the path data itself: if someone redraws one and not the other, the
+// two marks drift and this is the only place that notices.
+const markPath = read("../src/screens/Landing.tsx").match(/M12 2v20[^"]*/)?.[0] ?? "";
+check("the mark's path is shared with the component", Boolean(markPath) && favicon.includes(markPath), markPath || "(not found in Landing.tsx)");
+
+// The URL must be hashable. A favicon served from public/ keeps one permanent
+// URL, which is how a redrawn icon stayed invisible behind a browser cache that
+// survives hard reloads. src/ is what lets Vite emit a hashed name.
+const html = read("../index.html");
+check("the icon url is hashable, not a fixed public/ path", /href="\/src\/assets\/favicon\.svg"/.test(html), html.match(/<link rel="icon"[^>]*>/)?.[0] ?? "(no icon link)");
 
 check("no uncaught page errors", pageErrors.length === 0, pageErrors.slice(0, 2).join(" | "));
 

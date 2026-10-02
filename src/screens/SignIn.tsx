@@ -28,6 +28,7 @@ export function SignIn({
   setAccountDraft,
   busy,
   error,
+  setupMessage,
 }: {
   state: SignInState;
   onSignIn: () => void;
@@ -43,6 +44,8 @@ export function SignIn({
   onClaim: (id: string) => void;
   busy: boolean;
   error?: string;
+  /** The setup flow's own message, shown next to the button that produced it. */
+  setupMessage?: string;
 }) {
   const working = busy;
 
@@ -70,7 +73,18 @@ export function SignIn({
               which. */}
           <div className="mt-5">
             {!walletConnected ? (
-              <ConnectButton />
+              <>
+                <ConnectButton />
+                {/* The web-wallet popup path (Slush without the extension) opens
+                    my.slush.app, which is region-gated: from a blocked region it
+                    serves a 451 instead of the approval screen, so the connect
+                    fails as an opaque "invalid request". The extension talks to
+                    the page directly with no popup and no region gate. */}
+                <p className="mt-3 text-[11.5px] leading-5 text-faint">
+                  If connecting fails or loops, install the Slush (Sui) browser
+                  extension and connect through that instead of the web popup.
+                </p>
+              </>
             ) : (
               <button
                 onClick={onSignIn}
@@ -142,6 +156,31 @@ export function SignIn({
             <p className="mono mt-4 text-[12px] leading-5 text-faint">
               {step === "creating" && "Creating your account…"}
               {step === "granting" && "Adding the delegate key…"}
+              {/* Every non-idle step says something. `needs_account_id` used to
+                  render nothing at all, so the button looked dead when it had in
+                  fact worked and was asking for an account id. */}
+              {step === "error" && "That did not go through — see below."}
+              {step === "needs_account_id" && "This address already has an account — paste its id below."}
+              {step === "done" && "Done — you are in."}
+            </p>
+          )}
+
+          {/* The setup error, shown where the button is. Without this, a failure
+              in `start()` only reached the console, so the screen said nothing
+              and the button read as unresponsive. */}
+          {step === "error" && setupMessage && (
+            <p className="mt-3 rounded-lg bg-panel px-4 py-3 text-[12.5px] leading-6 text-stop">
+              {setupMessage}
+            </p>
+          )}
+          {step === "needs_account_id" && setupMessage && (
+            <p className="mt-3 rounded-lg bg-panel px-4 py-3 text-[12.5px] leading-6 text-muted">
+              {setupMessage}
+            </p>
+          )}
+          {step === "done" && setupMessage && (
+            <p className="mt-3 rounded-lg bg-panel px-4 py-3 text-[12.5px] leading-6 text-muted">
+              {setupMessage}
             </p>
           )}
 

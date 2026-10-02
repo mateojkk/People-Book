@@ -121,6 +121,26 @@ export default function App() {
 
   const ready = Boolean(who?.signedIn && who.accountId && who.hasDelegate);
 
+  /**
+   * Moving forward after the setup click, and only then.
+   *
+   * There is deliberately no route guard and no background redirect — signing in
+   * must never move you off the page you chose (see the note above). But there is
+   * one case where movement is the *point*: you pressed a button whose whole job
+   * is to get you into the app. Without this, a completed setup left you on
+   * /signin with a button that had correctly done nothing, which read as broken.
+   *
+   * Keyed on the `done` step rather than on `ready`, so an address that was
+   * already set up when you arrived is not teleported anywhere — only an action
+   * you took causes this.
+   */
+  const enteredApp = useRef(false);
+  useEffect(() => {
+    if (ownership.step !== "done" || enteredApp.current) return;
+    enteredApp.current = true;
+    nav("/app");
+  }, [ownership.step, nav]);
+
   const signInScreen = (
     <SignIn
       state={state}
@@ -135,6 +155,7 @@ export default function App() {
       accountDraft={accountIdDraft}
       setAccountDraft={setAccountIdDraft}
       busy={ownership.step === "creating" || ownership.step === "granting"}
+      setupMessage={ownership.message}
     />
   );
 

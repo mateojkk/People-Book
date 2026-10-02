@@ -62,6 +62,13 @@ function describeSetupError(error: unknown): string {
   if (/balance|insufficient|gas/i.test(raw)) {
     return "This address needs a small amount of SUI to sign for gas. Top it up and try again.";
   }
+  // Falls through for anything unrecognised.
+  //
+  // Two wallet-side failures land here, and neither is visible from the app:
+  // "Your connection is not secure" (Slush flags any http origin — dev only,
+  // gone on https) and "invalid request" (the Slush web popup is region-gated
+  // with a 451; use the browser extension instead). Both are documented in
+  // auth.ts and on the sign-in screen, so this stays a passthrough.
   return raw;
 }
 
@@ -91,12 +98,30 @@ export function useOwnership(onDone: () => void): OwnershipState {
   }, []);
 
   const start = useCallback(async () => {
+    // Which step, and everything the wallet actually said. Both were missing:
+    // "invalid request" with no step and no detail is unactionable, and it is
+    // exactly what left this stuck -- every attempt looked identical, so there
+    // was nothing to distinguish "the wallet rejected it" from "the app built it
+    // wrong", which are completely different bugs.
+    let phase = "starting";
+    console.info("[setup] start clicked", {
+      hasAddress: Boolean(account?.address),
+      address: account?.address ?? null,
+      claimedAccountId,
+      network,
+      rpcUrl,
+    });
     if (!account?.address) {
+      // Logged as well as shown: this is the one branch that used to be
+      // indistinguishable from a dead button, because a stale render can leave
+      // the address empty while the screen still looks signed in.
+      console.warn("[setup] no address on the account — the button did nothing");
       setStep("error");
       setMessage("Connect a wallet first.");
       return;
     }
     setMessage("");
+    console.info("[setup] beginning setup, phase=starting");
 
     try {
       const address = account.address;
@@ -108,8 +133,15 @@ export function useOwnership(onDone: () => void): OwnershipState {
       const walletSigner = {
         address,
         signAndExecuteTransaction: async (input: { transaction: unknown }) => {
+          console.info("[setup] wallet popup requested — check your wallet for an approval dialog");
           const result = await dAppKit.signAndExecuteTransaction({
             transaction: input.transaction as never,
+          });
+          console.info("[setup] wallet popup resolved", {
+            digest:
+              "digest" in result
+                ? result.digest
+                : ("Transaction" in result ? result.Transaction?.digest : undefined) ?? "",
           });
           const digest =
             "digest" in result
@@ -122,19 +154,29 @@ export function useOwnership(onDone: () => void): OwnershipState {
       // Fetched from the server rather than hardcoded: the published docs list
       // mainnet ids the production relayer does not serve, so an account created
       // against them 401s. One source of truth, and a rotation is a one-file fix.
+      console.info("[setup] fetching deployment + whoami");
       const [{ packageId, registryId }, status] = await Promise.all([
         api.get<{ packageId: string; registryId: string }>("/api/account/deployment"),
         api.get<{ accountId: string | null; hasDelegate: boolean }>("/api/auth/whoami"),
       ]);
+      console.info("[setup] deployment + whoami resolved", {
+        packageId,
+        registryId,
+        accountId: status.accountId,
+        hasDelegate: status.hasDelegate,
+      });
 
       let accountId = status.accountId;
+      console.info("[setup] branch decision", { accountId, claimedAccountId, hasDelegate: status.hasDelegate });
 
       if (!accountId && !claimedAccountId) {
         // Only create when there is genuinely nothing. A user who has used any
         // other MemWal app already has an account, and calling create_account
         // again aborts with code 3 (EAccountAlreadyExists) — a wallet error that
         // looks like the app being broken.
+        phase = "creating the account";
         setStep("creating");
+        console.info("[setup] calling createAccount on chain");
         try {
           const created = await createAccount({
             packageId,
@@ -143,6 +185,7 @@ export function useOwnership(onDone: () => void): OwnershipState {
             suiClient: client as never,
             suiNetwork: network,
           });
+          console.info("[setup] createAccount succeeded", { accountId: created.accountId, digest: created.digest });
           accountId = created.accountId;
         } catch (error) {
           // Code 3 is EAccountAlreadyExists. The account is a shared object, so
@@ -158,16 +201,27 @@ export function useOwnership(onDone: () => void): OwnershipState {
           throw error;
         }
       } else if (status.hasDelegate) {
+        // Nothing to do: the grant already exists. This is the branch that made
+        // the button look dead — it correctly skips two wallet popups, but it
+        // left the screen on /signin with no visible change, so "already set up"
+        // and "the click did nothing" were indistinguishable.
+        console.info("[setup] already granted — nothing to do, this address is set up");
+        setMessage("This address is already set up — the delegate key is on your account. Opening People Book…");
         setStep("done");
         onDone();
         return;
       }
 
+      phase = "registering the delegate key";
       setStep("granting");
+      console.info("[setup] reaching grant step", { accountId });
 
       // The key is fetched from the server rather than derived here, so the bytes
       // the user is shown on screen are provably the bytes being granted.
+      console.info("[setup] fetching delegate public key from server");
       const { publicKey } = await api.get<{ publicKey: string }>("/api/account/delegate-key");
+      console.info("[setup] delegate key received", { publicKey });
+      phase = `asking your wallet to sign the ${network} transaction`;
       setDelegatePublicKey(publicKey);
 
       // Narrowed to a definite string: every branch above either sets accountId
@@ -178,7 +232,8 @@ export function useOwnership(onDone: () => void): OwnershipState {
       }
 
       try {
-        await addDelegateKey({
+        console.info("[setup] calling addDelegateKey on chain", { accountId, packageId, registryId });
+        const grantResult = await addDelegateKey({
           packageId,
           registryId,
           accountId,
@@ -188,6 +243,7 @@ export function useOwnership(onDone: () => void): OwnershipState {
           suiClient: client as never,
           suiNetwork: network,
         });
+        console.info("[setup] addDelegateKey succeeded", grantResult);
       } catch (error) {
         // Code 0 is EDelegateKeyAlreadyExists. That means the grant this app was
         // about to make is already there, which is SUCCESS, not a failure -- and
@@ -203,15 +259,31 @@ export function useOwnership(onDone: () => void): OwnershipState {
       // than trusting ours, and a failure here is not fatal: the registry will
       // still find the account on the next load.
       rememberClaim(accountId);
+      console.info("[setup] adopting account server-side");
       await api.post("/api/account/adopt").catch(() => {});
+      console.info("[setup] done — calling onDone");
 
       setStep("done");
       onDone();
     } catch (error) {
+      // The full error, not the one-line version. Setup spans the deployment
+      // fetch, account creation, and the delegate grant — without the phase and
+      // the wallet's own detail, every failure looks identical.
+      const detail = error instanceof Error ? error : new Error(String(error));
+      console.error(`[setup] failed while ${phase}`, {
+        message: detail.message,
+        name: detail.name,
+        stack: detail.stack,
+        cause: (detail as { cause?: unknown }).cause,
+        raw: detail,
+      });
+      console.error(
+        `[setup] failed while ${phase}: ${detail.message}`,
+      );
       setStep("error");
       setMessage(describeSetupError(error));
     }
-  }, [account?.address, dAppKit, onDone]);
+  }, [account?.address, dAppKit, onDone, network, claimedAccountId]);
 
   /**
    * Verifies and stores a user-supplied account id, then grants access to it.
@@ -222,14 +294,17 @@ export function useOwnership(onDone: () => void): OwnershipState {
    */
   const claimAccountId = useCallback(
     async (id: string) => {
+      console.info("[setup] claim clicked", { id });
       setMessage("");
       try {
         const claimed = await api.post<{ accountId: string }>("/api/account/claim", { accountId: id.trim() });
+        console.info("[setup] claim accepted", claimed);
         // The server returns the normalised id, so what we remember is exactly
         // what it verified rather than whatever the user happened to paste.
         rememberClaim(claimed.accountId);
         await start();
       } catch (error) {
+        console.warn("[setup] claim failed", error);
         setStep("needs_account_id");
         setMessage(error instanceof Error ? error.message : "That id did not work.");
       }

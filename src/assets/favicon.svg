@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32">
+  <!-- The same mark as `Mark` in src/screens/Landing.tsx, so the tab and the
+       page cannot drift apart.
+
+       What was here before contradicted both the logo and RULES 6: an open book
+       drawn in mint green with an orange dot, on #0d0f12. That is a different
+       shape from the in-app mark, two chromatic colours where the product allows
+       one, and a background value that is not in the palette (the page base is
+       #17181a). Replaced with the real geometry and the real accent.
+
+       viewBox is the same 24-unit space as the component, so the paths below are
+       the component's paths. They are inset by 0.8 to give the plate a margin,
+       and the stroke is 2.6 rather than 2.2 so that after the inset the weight
+       matches the in-app mark, and so the rays survive being drawn at 16px,
+       which is the size that actually matters here. -->
+  <rect width="24" height="24" rx="5.25" fill="#17181a"/>
+  <g transform="translate(12 12) scale(0.8) translate(-12 -12)" stroke="#7cc0f5" stroke-width="2.6" stroke-linecap="round" fill="none">
+    <path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M4.93 19.07l14.14-14.14"/>
+    <circle cx="12" cy="12" r="3.5" fill="#7cc0f5" stroke="none"/>
+  </g>
+</svg>

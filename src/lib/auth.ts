@@ -13,10 +13,24 @@
  *
  * dApp Kit v2 exposes signing on the kit instance rather than through a hook, so
  * these go through `useDAppKit()`.
+ *
+ * ── Two wallet errors, two different causes ──────────────────────────────────
+ * "Your connection is not secure" is Slush's own check: `isSecureURL` is
+ * literally `protocol === "https:"`, so ANY plain-http origin (including
+ * localhost) gets the banner. It is a warning, not a refusal — connecting
+ * anyway works. It goes away on any https origin, i.e. in production.
+ *
+ * "invalid request" (lowercase, no code) comes from the wallet side declining
+ * the connect popup: the Slush web wallet opens my.slush.app in a popup, and
+ * from some regions that page serves a 451 ("not available in your region")
+ * instead of the approval screen. A region-blocked popup can never approve, so
+ * the connect fails opaquely. The fix is a wallet with a local path: the Slush
+ * / Sui browser extension talks to the page directly, needs no popup, and has
+ * no region gate — install it and connect through it instead.
  */
 
-import { useCallback, useState } from "react";
-import { useCurrentAccount, useDAppKit } from "@mysten/dapp-kit-react";
+import { useCallback, useEffect, useState } from "react";
+import { useCurrentAccount, useDAppKit, useWallets } from "@mysten/dapp-kit-react";
 import { ConnectButton } from "@mysten/dapp-kit-react/ui";
 import { api } from "./api.ts";
 
@@ -36,7 +50,22 @@ interface ChallengeResponse {
 export function useSignIn() {
   const account = useCurrentAccount();
   const dAppKit = useDAppKit();
+  const wallets = useWallets();
   const [state, setState] = useState<SignInState>({ phase: "disconnected" });
+
+  // The one diagnostic the connect modal swallows. dApp Kit's modal shows
+  // "Connection failed / Something went wrong" with no error text, and the
+  // extension popup shows its own message — so when the two disagree there is
+  // nothing tying them together. This logs every registered wallet (extension
+  // vs web popup look like two entries both called "Slush") and every connect
+  // attempt's raw result, so "invalid request" can be traced to which wallet
+  // object actually failed.
+  useEffect(() => {
+    console.info(
+      "[wallets]",
+      wallets.map((w) => ({ name: w.name, id: (w as { id?: string }).id ?? null })),
+    );
+  }, [wallets]);
 
   const signIn = useCallback(async () => {
     if (!account?.address) {
@@ -92,6 +121,11 @@ export function useSignIn() {
       }
       try {
         await dAppKit.disconnectWallet();
+      } catch {
+        // dApp Kit throws WalletNotConnectedError when there is nothing to
+        // disconnect (e.g. session alive, wallet already unplugged). That is
+        // the desired end state, not a failure — swallow it so disconnect never
+        // rejects and the `finally` below always runs.
       } finally {
         setState({ phase: "disconnected" });
         onDone?.();

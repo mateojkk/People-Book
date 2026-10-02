@@ -198,3 +198,15 @@ code,
     transition-duration: 0.01ms !important;
   }
 }
+/* Slow drift for the landing backdrop, so the pre-video wait reads as alive
+   rather than stalled. 22s and alternate: slow enough not to be noticed as
+   motion, wide enough that the highlight visibly changes position. Wrapped in
+   motion-safe at the call site, so reduced-motion readers get a still gradient. */
+@keyframes drift {
+  from {
+    transform: translate3d(-2%, -1%, 0) scale(1);
+  }
+  to {
+    transform: translate3d(3%, 2%, 0) scale(1.08);
+  }
+}

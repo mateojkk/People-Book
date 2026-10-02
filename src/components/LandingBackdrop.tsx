@@ -66,9 +66,50 @@ export function LandingBackdrop() {
 
   return (
     <div aria-hidden="true" className="pointer-events-none fixed inset-0 -z-10 overflow-hidden bg-base">
-      {/* Always rendered, and it is what a reduced-motion reader sees: the page is
-          fully readable without ever touching the video. */}
-      <div className="absolute inset-0 bg-[radial-gradient(120%_90%_at_50%_0%,var(--panel)_0%,var(--base)_62%)]" />
+      {/* The five seconds before the first frame arrives.
+          This is what the page actually looks like for most of the load, and it
+          was near-black: the old gradient ran panel -> base, and both of those
+          are almost the same very dark grey. So the opening impression was a black
+          screen with text on it, which reads as broken rather than as loading --
+          that was the actual complaint, not fetch time.
+
+          So this is designed to be the page, not a placeholder for one. Light
+          enough to have visible structure and a warm accent bloom in the upper
+          third, drifting slowly so it never looks frozen. Someone landing here
+          before the video arrives sees something deliberate, and someone who never
+          gets the video at all -- reduced motion, save-data, a failed fetch --
+          still sees a finished-looking page rather than a gap. */}
+      {/* Inline styles, not Tailwind arbitrary values. `bg-[radial-gradient(...-
+          8%,...)]` compiles to nothing at all -- the negative percentage makes
+          the arbitrary-value parser give up, silently, and you are left with a
+          correctly positioned layer that paints nothing. Which is exactly what a
+          black background looks like. There was no error anywhere; the class just
+          was not in the stylesheet. */}
+      <div
+        className="absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(105% 80% at 50% 0%, #2f353d 0%, #20242a 42%, var(--color-base) 86%)",
+        }}
+      />
+      <div
+        className="absolute inset-0 motion-safe:animate-[drift_22s_ease-in-out_infinite_alternate]"
+        style={{
+          background:
+            "radial-gradient(40% 32% at 26% 16%, rgba(124,192,245,0.14), transparent 72%)",
+        }}
+      />
+      {/* A faint grid, to give the dark field some structure at a glance. */}
+      <div
+        className="absolute inset-0 opacity-[0.16]"
+        style={{
+          backgroundImage:
+            "linear-gradient(to right, rgba(227,229,232,0.5) 1px, transparent 1px), linear-gradient(to bottom, rgba(227,229,232,0.5) 1px, transparent 1px)",
+          backgroundSize: "72px 72px",
+          maskImage: "radial-gradient(70% 55% at 50% 12%, #000 0%, transparent 78%)",
+          WebkitMaskImage: "radial-gradient(70% 55% at 50% 12%, #000 0%, transparent 78%)",
+        }}
+      />
 
       {armed && (
         <video
@@ -77,21 +118,13 @@ export function LandingBackdrop() {
           src={BACKDROP_SRC}
           autoPlay
           muted
-          // Deliberately NOT looped. Measured on this asset, looping roughly
-          // doubles the wait for a playable frame:
-          //
-          //   loop     6s: 5% fetched, readyState 1 (nothing on screen)
-          //            12s: 16% fetched
-          //   no loop  6s: 12% fetched, readyState 3 (playing)
-          //            12s: 48% fetched
-          //
-          // The browser knows a looping video has to come back to the start, so it
-          // pulls the whole 32MB rather than playing what it has. Dropping `loop`
-          // lets it stream, reach a playable state in half the time, and stop
-          // fetching once it is ahead. The cost is that it plays once and holds
-          // the last frame -- invisible at this opacity, under a scrim, behind the
-          // text. If a looping background is ever genuinely wanted, the fix is a
-          // smaller file at a URL, not the loop attribute.
+          loop
+          // Looping does delay the first playable frame on a 32MB asset -- the
+          // browser pulls further ahead because it knows it must return to the
+          // start. That was measured and it is a real cost, but it was also the
+          // wrong diagnosis: the complaint was that the page was black while it
+          // waited, not that the video arrived late. The wait is now designed for,
+          // so the video can afford to loop. motion-reduce readers never get here.
           playsInline
           preload="auto"
           onCanPlay={() => setVisible(true)}
@@ -111,7 +144,9 @@ export function LandingBackdrop() {
           contrast below comfortable, and the headline is the one thing on this
           page that cannot be allowed to fail. If the video is ever swapped for a
           brighter one, this gradient is the first thing that has to move. */}
-      <div className="absolute inset-0 bg-gradient-to-b from-base/45 via-base/55 to-base/85" />
+      {visible && (
+        <div className="absolute inset-0 bg-gradient-to-b from-base/45 via-base/55 to-base/85" />
+      )}
 
       {/* The guarantee, and only as strong as it has to be.
           This is a full-screen scrim, which is the blunt instrument: it darkens

@@ -211,6 +211,13 @@ The general rule: **anything that is not source goes in `src/` as text. Fonts,
 video, images, fixtures — link them, do not carry them.** The only binaries that
 belong in the repo are the ones this project generates and must test against.
 
+**The size test, not the file-type test.** A 4KB PNG generated from the logo by
+`npm run icons` is a build output of source, and committing it is correct: there
+is no URL to link, it has to exist as a file for iOS and old Safari to find it,
+and it is regenerated from favicon.svg rather than drawn by hand. The rule is
+about assets that are *fetched from elsewhere* and could stay being fetched. A
+33MB video fits the rule at any size; a 4KB icon fits it at no size.
+
 ---
 
 ## 21. Decorative motion must never cost the reader their text

@@ -19,6 +19,11 @@ export default defineConfig({
     },
   },
   server: {
+    // Pinned to IPv4 loopback. The default binds IPv6 only ([::1]:5173), so
+    // http://127.0.0.1:5173 refused connections while http://localhost:5173
+    // worked — and wallets treat those as different origins. One origin means
+    // one session, one Slush appUrl, and no drift between them.
+    host: "127.0.0.1",
     port: 5173,
     proxy: {
       "/api": {

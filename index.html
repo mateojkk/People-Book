@@ -3,9 +3,32 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Served from src/ rather than public/ so Vite gives it a content-hashed
+         URL on build. A favicon in public/ keeps one fixed URL forever, and
+         browsers cache favicons in a store that survives reloads and even a
+         hard reload -- so a redrawn icon stayed invisible locally. A hashed
+         name cannot be stale: change the drawing, get a new URL. -->
+    <!-- Icons, all generated from src/assets/favicon.svg by scripts/gen-icons.mjs,
+         so the tab, the home screen and the in-app mark are one drawing.
+
+         The SVG is the one that matters: it is text, it scales, and it is the
+         source. The PNGs exist because iOS ignores SVG for apple-touch-icon, and
+         because older Safari will render nothing at all without a raster
+         fallback. Order matters — the browser takes the last one it understands. -->
+    <link rel="icon" type="image/svg+xml" href="/src/assets/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/src/assets/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/src/assets/favicon-16.png" />
+    <link rel="apple-touch-icon" href="/src/assets/apple-touch-icon.png" />
+    <!-- No rel="mask-icon". Firefox pinned tabs treat an SVG as one silhouette,
+         so the plate in this file would render as a solid rounded square rather
+         than the mark -- a pinned tab showing the wrong shape is worse than no
+         pinned tab, and it is legacy Firefox only. A real mask would need a
+         plate-free monochrome variant, which is only worth making if anyone
+         actually uses pinned tabs. -->
+
+    <meta name="application-name" content="People Book" />
     <meta name="color-scheme" content="dark" />
-    <meta name="theme-color" content="#0d0f12" />
+    <meta name="theme-color" content="#17181a" />
     <meta
       name="description"
       content="A private assistant that remembers everyone in your life, and comes to you instead of waiting to be asked."

@@ -26,6 +26,11 @@ const dAppKit = createDAppKit({
   defaultNetwork: network,
   createClient: (net: string) => new SuiGrpcClient({ baseUrl: rpcUrl, network: net as "mainnet" | "testnet" | "devnet" | "localnet" }),
   storageKey: "people-book-dappkit",
+  // Named explicitly rather than read off document.title: the Slush web wallet
+  // sends this as `appName` in its connect request (a required field), and the
+  // default lookup races the title. An empty or drifting name is one way a
+  // well-formed connect becomes an "invalid request" on the wallet side.
+  slushWalletConfig: { appName: "People Book" },
 });
 
 const root = document.getElementById("root");

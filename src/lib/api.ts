@@ -21,6 +21,9 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const method = init?.method ?? "GET";
+  const startedAt = Date.now();
+  console.info(`[api] ${method} ${path} → sending`);
   const response = await fetch(path, {
     credentials: "same-origin",
     ...init,
@@ -39,6 +42,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const body = (payload ?? {}) as { error?: string; message?: string };
+    console.error(
+      `[api] ${method} ${path} → ${response.status} (${body.error ?? "no code"}) in ${Date.now() - startedAt}ms: ${body.message ?? "no message"}`,
+    );
     throw new ApiError(
       response.status,
       body.error ?? "unknown",
@@ -46,6 +52,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     );
   }
 
+  console.info(`[api] ${method} ${path} → ${response.status} in ${Date.now() - startedAt}ms`);
   return payload as T;
 }
 
