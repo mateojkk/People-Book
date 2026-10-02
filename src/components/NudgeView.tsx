@@ -95,7 +95,7 @@ export function NudgeView({ onForget }: { onForget: (id: string) => void }) {
       {loading ? (
         <div className="space-y-2" aria-busy>
           {[0, 1, 2].map((i) => (
-            <div key={i} className="h-16 animate-pulse rounded border border-rule bg-base" />
+            <div key={i} className="h-16 animate-pulse rounded bg-panel" />
           ))}
         </div>
       ) : !data || data.nudges.length === 0 ? (
@@ -107,7 +107,7 @@ export function NudgeView({ onForget }: { onForget: (id: string) => void }) {
       ) : (
         <ul className="space-y-2">
           {data.nudges.map((nudge) => (
-            <li key={nudge.id} className="rounded border border-rule bg-base p-3">
+            <li key={nudge.id} className="rounded bg-panel p-3">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-sm leading-snug text-text">{nudge.text}</p>
                 <KindTag kind={nudge.kind} />
@@ -133,7 +133,7 @@ export function NudgeView({ onForget }: { onForget: (id: string) => void }) {
       )}
 
       {data && (
-        <div className="border-t border-rule pt-3">
+        <div className="pt-3">
           <BasisNote basis={data.basis} computedAt={data.computedAt} />
           {blobCount !== null && (
             <p className="mt-1 text-[11px] text-muted">

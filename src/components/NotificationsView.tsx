@@ -109,7 +109,7 @@ export function NotificationsView() {
 
       {failed && <Note text={failed} />}
 
-      {!!data.history?.length && <ToldYou history={data.history} today={data.notice} />}
+      {!!olderDays(data).length && <ToldYou history={data.history ?? []} today={data.notice} />}
 
       {active.length === 0 ? (
         <Empty />
@@ -161,8 +161,8 @@ function Row({
 
   return (
     <li
-      className={`flex flex-wrap items-start gap-x-4 gap-y-2 rounded-lg border px-4 py-3 transition-colors ${
-        stale ? "border-rule-soft bg-transparent opacity-60" : "border-rule bg-panel hover:border-rule-soft"
+      className={`flex flex-wrap items-start gap-x-4 gap-y-2 rounded-lg px-4 py-3 transition-colors ${
+        stale ? "bg-transparent opacity-50" : "bg-panel hover:bg-raised"
       }`}
     >
       <div className="min-w-0 flex-1">
@@ -176,7 +176,7 @@ function Row({
         <button
           onClick={() => onSettle(task.memoryId, stale ? "reopen" : "settle")}
           disabled={busy}
-          className="rounded border border-rule px-2.5 py-1 text-[11.5px] text-muted transition-colors hover:bg-raised hover:text-text disabled:opacity-40"
+          className="rounded bg-raised px-2.5 py-1 text-[11.5px] text-muted transition-colors hover:bg-surface-3 hover:text-text disabled:opacity-40"
         >
           {busy ? "…" : stale ? "Bring back" : "Done"}
         </button>
@@ -194,14 +194,20 @@ function Row({
  * which is why it is labelled as what the book supports rather than as a
  * transcript -- see api/lib/tasks.ts > noticeHistory.
  */
+/** The record minus today, which is already the banner. */
+function olderDays(data: Today): { date: string; notice: string }[] {
+  const today = todayISODate();
+  return (data.history ?? []).filter((entry) => entry.date !== today);
+}
+
 function ToldYou({ history, today }: { history: { date: string; notice: string }[]; today?: string }) {
   // The newest line is already the banner; showing it twice in one screen is
   // noise, so the record starts from yesterday.
   const older = history.slice(today ? 1 : 0);
   return (
-    <section className="border-t border-rule pt-5">
+    <section className="pt-2">
       <h2 className="text-[11px] font-bold uppercase tracking-[0.08em] text-faint">Told you · last 7 days</h2>
-      <ul className="mt-3 space-y-2.5">
+      <ul className="mt-3 space-y-2">
         {older.map((entry) => (
           <li key={entry.date} className="flex gap-3 text-[12.5px] leading-5">
             <span className="tabular w-[5.5rem] shrink-0 whitespace-nowrap text-faint">{dayLabel(entry.date)}</span>
@@ -217,6 +223,10 @@ function ToldYou({ history, today }: { history: { date: string; notice: string }
   );
 }
 
+function todayISODate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 function dayLabel(iso: string): string {
   const then = Date.parse(`${iso}T00:00:00Z`);
   if (!Number.isFinite(then)) return iso;
@@ -228,7 +238,7 @@ function dayLabel(iso: string): string {
 
 function Empty() {
   return (
-    <div className="rounded-lg border border-rule-soft px-5 py-8 text-center">
+    <div className="rounded-lg bg-panel px-5 py-8 text-center">
       <p className="text-[13.5px] leading-6 text-muted">
         Nothing is outstanding. Tell it about a promise and it will show up here with a
         date on it.

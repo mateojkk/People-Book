@@ -178,7 +178,18 @@ a fix on the strength of a number that partly counted nothing.
   out it is not, and a model that ignores an optional field is not a bug report,
   it is a fact about the model.
 
-## 18. The dependency list is a claim
+## 18. Borderless, and say so in the tokens
+
+Forty-six elements were separated by a line. Surfaces step through the greys,
+spacing does the grouping, and one accent marks whatever is live. Depth is
+material, not outline. The only outlines left are focus rings, which are not
+decoration.
+
+- If it needs a border to be legible, the surface tint is wrong, not the border.
+- Write the rule down where the palette is defined. A design language that lives
+  only in someone's head gets re-litigated every session.
+
+## 19. The dependency list is a claim
 
 Unused dependencies were removed once and the list still drifted. Every package
 added has to be used by something in `src/` or it comes out.

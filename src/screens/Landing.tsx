@@ -47,13 +47,13 @@ export function Landing({ onSignIn }: { onSignIn: () => void }) {
         <span className="text-[12px] text-faint">One signature. About a minute.</span>
       </div>
 
-      <dl className="mt-10 grid gap-px overflow-hidden rounded-lg border border-rule bg-rule sm:grid-cols-3">
+      <dl className="mt-10 grid gap-3 sm:grid-cols-3">
         {[
           ["Owned by you", "The account is a Sui object under your address."],
           ["Revocable", "One onchain transaction ends this app's access."],
           ["Cited", "Every claim it makes points at the memory behind it."],
         ].map(([term, detail]) => (
-          <div key={term} className="bg-base px-3.5 py-3">
+          <div key={term} className="bg-panel px-4 py-3.5">
             <dt className="text-[12px] font-bold text-text">{term}</dt>
             <dd className="mt-1 text-[11.5px] leading-5 text-faint">{detail}</dd>
           </div>

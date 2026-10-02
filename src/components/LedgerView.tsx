@@ -19,8 +19,8 @@ interface MemoriesResponse {
 }
 
 const CONFIDENCE_STYLE: Record<string, string> = {
-  confirmed: "border-accent/30 text-accent",
-  inferred: "border-warn/30 text-warn",
+  confirmed: "bg-accent/10 text-accent",
+  inferred: "bg-warn/10 text-warn",
 };
 
 export function LedgerView({ onForget }: { onForget: (id: string) => void }) {
@@ -72,7 +72,7 @@ export function LedgerView({ onForget }: { onForget: (id: string) => void }) {
         list, this is a partial view — and saying so is the only honest option.
       */}
       {data.truncated && (
-        <p className="rounded border border-warn/25 bg-warn/5 px-2.5 py-2 text-[11px] text-warn">
+        <p className="rounded bg-warn/10 px-2.5 py-2 text-[11px] text-warn">
           Partial view. Walrus Memory searches by meaning rather than listing, so this is assembled
           from a fan-out of queries. The account holds{" "}
           <span className="tabular">{data.blobCount}</span> blobs and {data.memories.length} are shown
@@ -85,11 +85,11 @@ export function LedgerView({ onForget }: { onForget: (id: string) => void }) {
       ) : (
         <ul className="space-y-1.5">
           {shown.map((m) => (
-            <li key={m.id} className="rounded border border-rule bg-base px-2.5 py-2">
+            <li key={m.id} className="rounded bg-panel px-2.5 py-2">
               <div className="flex items-start justify-between gap-2">
                 <p className="text-xs leading-snug text-text">{m.text}</p>
                 <span
-                  className={`mono shrink-0 rounded border px-1.5 py-0.5 text-[10px] uppercase tracking-wider ${CONFIDENCE_STYLE[m.confidence]}`}
+                  className={`mono shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wider ${CONFIDENCE_STYLE[m.confidence]}`}
                 >
                   {m.confidence}
                 </span>

@@ -83,6 +83,7 @@ await page.route("**/api/today", (r) =>
       history: [
         { date: "2026-10-01", notice: "Maya\u2019s birthday is on the 14th \u2014 tomorrow. Also, Dev: send the signed contract \u2014 2 days late." },
         { date: "2026-09-30", notice: "Dev: send the signed contract \u2014 a day late." },
+        { date: "2026-09-29", notice: "Dev: send the signed contract \u2014 2 days late." },
         { date: "2026-09-28", notice: "Dev: send the signed contract \u2014 3 days late." },
       ],
       dueCount: 2,
@@ -193,6 +194,23 @@ await page.waitForTimeout(1200);
 const body = await page.evaluate(() => document.body.innerText);
 check("the message you sent is shown", body.includes("Mara's birthday is the 14th"));
 check("the reply is shown", body.includes("shellfish allergy"));
+
+// A done frame with no deltas must still render the answer. It used to say
+// nothing at all, silently, because the turn reads `text` and the payload names
+// it `reply`.
+const nodelta = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+await nodelta.route("**/api/auth/whoami", (r) => r.fulfill({ json: { signedIn: true, address: ADDRESS, accountId: ACCOUNT, hasDelegate: true } }));
+await nodelta.route("**/api/today", (r) => r.fulfill({ json: { tasks: [], history: [], dueCount: 0, staleCount: 0, coverage: "complete" } }));
+await nodelta.route("**/api/chat", (r) =>
+  r.fulfill({ headers: { "content-type": "text/event-stream" },
+    body: `data: ${JSON.stringify({ type: "done", reply: "Answered without a single delta.", saved: [], cited: [], volunteered: [] })}\n\n` }));
+await nodelta.goto(BASE + "/app", { waitUntil: "networkidle" });
+await nodelta.locator("textarea").first().fill("hello");
+await nodelta.keyboard.press("Enter");
+await nodelta.waitForTimeout(900);
+check("a reply with no streamed deltas still renders",
+  (await nodelta.evaluate(() => document.body.innerText)).includes("Answered without a single delta"));
+await nodelta.close();
 check("what it remembered is attributed to a person", body.includes("Mara is allergic to shellfish"));
 check("the unprompted nudge is shown", body.includes("you owe Dev"));
 check("its sources are offered", body.includes("From 1 thing"));
@@ -270,7 +288,13 @@ check("each row can be finished", await page.getByRole("button", { name: "Done" 
 // returns what is rendered rather than what is written.
 check("notifications leave a seven day record", /told you . last 7 days/i.test(today), today.slice(0, 200));
 check("and past ones are in it", /a day late/.test(today) && /3 days late/.test(today));
-check("with the newest not repeated in the list", !/birthday is on the 14th/.test(today.slice(today.indexOf("Told you"))));
+// Case-insensitive: the heading is uppercased in CSS and innerText returns what
+// is rendered. indexOf("Told you") on "TOLD YOU" is -1, which silently turned this
+// assertion into a check of the last character of the page.
+const recordAt = today.search(/told you/i);
+const record = recordAt === -1 ? "" : today.slice(recordAt);
+check("with the newest not repeated in the list", !/birthday is on the 14th/.test(record), record.slice(0, 120));
+check("and the days before it are all still there", /a day late/.test(record) && /2 days late/.test(record) && /3 days late/.test(record));
 // The one that made this an activity tracker.
 check("nothing scores the user", !/you said you would do|let pass|% of/i.test(today));
 await page.screenshot({ path: "/tmp/shots/20-today.png" });

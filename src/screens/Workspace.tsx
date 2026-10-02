@@ -41,7 +41,7 @@ function Notice({ onOpen }: { onOpen: () => void }) {
        unrelated things 1200 pixels apart. */
     <button
       onClick={onOpen}
-      className="group w-full shrink-0 border-b border-rule bg-raised px-5 py-2.5 text-left transition-colors hover:bg-panel"
+      className="group w-full shrink-0 bg-raised px-5 py-3 text-left transition-colors hover:bg-surface-3"
     >
       <span className="mx-auto flex w-full max-w-thread items-center gap-3">
         <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
@@ -91,7 +91,7 @@ export function Workspace({
   return (
     <div className="flex h-screen overflow-hidden bg-base">
       <aside
-        className={`hidden shrink-0 flex-col overflow-hidden border-r border-rule bg-base transition-all duration-200 lg:flex ${
+        className={`hidden shrink-0 flex-col overflow-hidden bg-surface transition-all duration-200 lg:flex ${
           sidebarCollapsed ? "w-14 items-center" : "w-60"
         }`}
       >
@@ -149,7 +149,7 @@ export function Workspace({
             </div>
           )}
           <div
-            className={`flex border-t border-rule px-2 py-2 ${
+            className={`flex bg-base px-2 py-2.5 ${
               sidebarCollapsed ? "justify-center" : "items-center justify-between px-3"
             }`}
           >
@@ -182,7 +182,7 @@ export function Workspace({
       </aside>
 
       <div className="relative flex min-w-0 flex-1 flex-col">
-        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-rule-soft px-5 py-3 lg:hidden">
+        <header className="flex shrink-0 items-center justify-between gap-3 bg-surface px-5 py-3 lg:hidden">
           <div className="flex items-center gap-2">
             <Mark />
             <span className="text-[14px] font-semibold">People Book</span>
@@ -191,7 +191,7 @@ export function Workspace({
 
         {tab === "talk" && <Notice onOpen={() => setTab("notifications")} />}
         {modelReady === false && (
-          <div className="border-b border-rule bg-warn/10 px-5 py-2.5">
+          <div className="bg-warn/10 px-5 py-2.5">
             <p className="text-[13px] leading-5 text-warn">
               <strong className="font-medium">Nothing will be remembered.</strong> GROQ_API_KEY is
               not set, so it has no model to think with and replies are placeholders. Set it, restart.

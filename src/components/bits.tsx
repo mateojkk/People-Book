@@ -18,7 +18,7 @@ const KIND_LABEL: Record<NudgeKind, string> = {
 
 export function KindTag({ kind }: { kind: NudgeKind }) {
   return (
-    <span className="mono rounded border border-rule px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-muted">
+    <span className="mono rounded bg-raised px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-muted">
       {KIND_LABEL[kind]}
     </span>
   );
@@ -47,7 +47,7 @@ export function SourceTrace({
     );
   }
   return (
-    <div className="mt-2 border-l-2 border-rule pl-2.5">
+    <div className="mt-2 pl-3">
       <p className="text-[11px] text-muted">
         from your book
         {memory.occurredAt && <> · noted {memory.occurredAt}</>}
@@ -77,7 +77,7 @@ export function SourceTrace({
  */
 export function ElisionNotice({ person, since }: { person: string; since: string }) {
   return (
-    <p className="mt-3 flex items-start gap-2 rounded border border-warn/25 bg-warn/5 px-2.5 py-2 text-xs text-warn">
+    <p className="mt-3 flex items-start gap-2 rounded bg-warn/10 px-2.5 py-2 text-xs text-warn">
       <span aria-hidden className="mt-0.5 select-none">
         ◑
       </span>
@@ -137,12 +137,12 @@ export function BasisNote({
 
 export function ErrorNote({ message }: { message: string }) {
   return (
-    <p className="rounded border border-stop/30 bg-stop/5 px-3 py-2 text-xs text-stop" role="alert">
+    <p className="rounded bg-stop/10 px-3 py-2 text-xs text-stop" role="alert">
       {message}
     </p>
   );
 }
 
 export function Empty({ children }: { children: React.ReactNode }) {
-  return <p className="rounded border border-dashed border-rule px-3 py-6 text-center text-sm text-muted">{children}</p>;
+  return <p className="rounded-lg bg-panel px-3 py-8 text-center text-sm text-muted">{children}</p>;
 }

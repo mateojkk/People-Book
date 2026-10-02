@@ -226,7 +226,7 @@ export function ChatView({ onOpenBook }: { onOpenBook?: () => void }) {
                   const el = viewportRef.current;
                   if (el) el.scrollTop = el.scrollHeight;
                 }}
-                className="flex items-center gap-1.5 rounded-full border border-rule bg-panel px-3 py-1.5 text-[12px] text-muted transition-colors hover:bg-raised hover:text-text"
+                className="flex items-center gap-1.5 rounded-full bg-surface-3 px-3 py-1.5 text-[12px] text-muted shadow-lg transition-colors hover:bg-rule hover:text-text"
               >
                 Jump to latest
               </button>
@@ -273,7 +273,7 @@ function Composer({
           the text, which made an empty composer 102px tall -- a big hollow box for
           a one-line input. Inline, it is 52px when empty and grows with the text,
           because the button simply moves down as the text wraps. */}
-      <div className="flex items-end gap-1 rounded-2xl border border-rule bg-panel p-2 transition-colors focus-within:border-accent/50">
+      <div className="flex items-end gap-1 rounded-2xl bg-raised p-2 transition-colors focus-within:bg-surface-3">
         <label htmlFor="composer" className="sr-only">
           Message
         </label>
@@ -394,10 +394,10 @@ function TurnBlock({
           column, so you learn whose entry you are in rather than reading a label
           on a chip. */}
       {!!turn.saved?.length && (
-        <div className="mt-3 space-y-2">
+        <div className="mt-3 space-y-2.5">
           {turn.saved.map((memory) => (
             <div key={memory.id} className="marginalia">
-              <span className="margin-name truncate border-l border-rule-soft py-0.5 pl-3 text-[12px] font-medium text-accent">
+              <span className="margin-name truncate py-0.5 pr-3 text-[12px] font-medium text-accent">
                 {memory.person}
               </span>
               <span className="flex items-start gap-3">
@@ -425,7 +425,7 @@ function TurnBlock({
           <summary className="cursor-pointer select-none">
             From {turn.cited.length} thing{turn.cited.length === 1 ? "" : "s"} you told me
           </summary>
-          <ul className="mt-1.5 space-y-1 border-l border-rule pl-3">
+          <ul className="mt-1.5 space-y-1 pl-1">
             {turn.cited.map((c) => (
               <li key={c.id} className="leading-5">
                 <span className="text-muted">{c.person}:</span> {c.text}
@@ -501,8 +501,19 @@ async function streamTurn(
       } else if (event.type === "delta") {
         setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, text: t.text + String(event.text ?? "") } : t)));
       } else if (event.type === "done") {
-        const { type: _type, ...rest } = event as { type: string } & Partial<Turn>;
-        setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, ...rest, pending: false, status: undefined } : t)));
+        // The done payload names the field `reply`; the turn renders `text`. It
+        // only ever worked because the deltas had already filled `text` in, so a
+        // dropped chunk -- or a reply short enough that the whole answer arrived
+        // in one frame -- left the assistant saying nothing at all, with no error
+        // anywhere. The server always sends the full text here, so fall back to it.
+        const { type: _type, reply, ...rest } = event as { type: string; reply?: string } & Partial<Turn>;
+        setTurns((prev) =>
+          prev.map((t) =>
+            t.id === turnId
+              ? { ...t, ...rest, text: t.text || (typeof reply === "string" ? reply : ""), pending: false, status: undefined }
+              : t,
+          ),
+        );
       } else if (event.type === "error") {
         throw new Error(String(event.message ?? event.error ?? "Something went wrong"));
       }

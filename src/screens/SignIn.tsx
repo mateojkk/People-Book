@@ -75,7 +75,7 @@ export function SignIn({
           </div>
 
           {state.phase !== "disconnected" && state.phase !== "error" && (
-            <pre className="mono mt-5 max-h-32 overflow-auto whitespace-pre-wrap rounded border border-rule bg-panel p-3 text-[11px] leading-5 text-faint">
+            <pre className="mono mt-5 max-h-32 overflow-auto whitespace-pre-wrap rounded-lg bg-panel p-3 text-[11px] leading-5 text-faint">
               {state.phase === "signing" ? state.message : "preparing…"}
             </pre>
           )}
@@ -143,7 +143,7 @@ export function SignIn({
               and a genuinely new address look identical from here. Without this,
               the app would confidently offer to create an account that already
               exists and fail onchain. */}
-          <details className="mt-6 border-t border-rule pt-5">
+          <details className="mt-6 bg-panel px-4 py-3.5 rounded-lg">
             <summary className="cursor-pointer text-[12px] text-faint transition-colors hover:text-muted">
               I already have a Walrus Memory account
             </summary>
@@ -153,12 +153,12 @@ export function SignIn({
                 onChange={(e) => setAccountDraft(e.target.value)}
                 placeholder="0x... or an explorer link"
                 aria-label="Your Walrus Memory account id"
-                className="mono min-w-0 flex-1 rounded border border-rule bg-panel px-2.5 py-2 text-[12px] text-text outline-none placeholder:text-faint focus:border-accent/50"
+                className="mono min-w-0 flex-1 rounded bg-raised px-2.5 py-2 text-[12px] text-text outline-none placeholder:text-faint focus-visible:outline-2 focus-visible:outline-accent"
               />
               <button
                 onClick={() => onClaim(accountDraft.trim())}
                 disabled={!accountDraft.trim() || busy}
-                className="rounded border border-rule px-3 py-2 text-[12px] text-muted transition-colors hover:bg-raised hover:text-text disabled:opacity-40"
+                className="rounded bg-raised px-3 py-2 text-[12px] text-muted transition-colors hover:bg-surface-3 hover:text-text disabled:opacity-40"
               >
                 Use it
               </button>
@@ -169,7 +169,7 @@ export function SignIn({
             </p>
           </details>
 
-          <p className="mt-6 text-[12px] leading-6 text-faint">
+          <p className="mt-6 rounded-lg bg-panel px-4 py-3.5 text-[12px] leading-6 text-faint">
             Granting gives this app a scoped key to your account. It can be removed
             in one transaction on Sui, and the account goes quiet immediately —
             that is the whole revocation story, and there is no other way to take

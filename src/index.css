@@ -100,9 +100,9 @@ em {
 }
 
 /* ── The margin ──────────────────────────────────────────────────────────────
-   The book's one borrowed idea. A name in the margin, memories in the column.
-   Collapses to a plain stack on narrow screens rather than pretending a two
-   column layout fits on a phone. */
+   The book's one borrowed idea. A name in the margin, memories in the column,
+   told apart by the accent on the name rather than by a rule down the side.
+   Collapses to a plain stack on narrow screens. */
 @media (min-width: 40rem) {
   .marginalia {
     display: grid;
