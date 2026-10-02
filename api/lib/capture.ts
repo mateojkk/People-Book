@@ -18,7 +18,13 @@
  * is worse than no capture, because the user cannot tell which happened.
  */
 
-import { CONFIRM_THRESHOLD, type CaptureResult, type MemoryCandidate, type MemoryType } from "../../shared/types.ts";
+import {
+  CONFIRM_THRESHOLD,
+  MEMORY_TYPES,
+  type CaptureResult,
+  type MemoryCandidate,
+  type MemoryType,
+} from "../../shared/types.ts";
 import { recurringDate, monthForDayOnly, isFullMonthDay } from "./dates.ts";
 
 const MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
@@ -120,7 +126,16 @@ const PRONOUNS: ReadonlySet<string> = new Set([
   "yourself", "this", "that", "there", "someone", "somebody", "anyone",
 ]);
 
-const VALID_TYPES: readonly MemoryType[] = ["trait", "event", "promise", "taboo", "howto", "update"];
+/**
+ * The types the model is allowed to return.
+ *
+ * Was a second hand-written list of the same six values, which drifted: adding
+ * "correction" to MEMORY_TYPES left this behind, the tool schema rejected every
+ * correction the model correctly produced, and the whole feature failed as a 400
+ * with no visible cause. There is a test now that fails if these two ever diverge
+ * again, and there is no reason to write the list twice.
+ */
+const VALID_TYPES: readonly MemoryType[] = MEMORY_TYPES;
 
 /**
  * Turns whatever the model returned into candidates we are willing to show.
@@ -311,6 +326,23 @@ async function extractRaw(
                         description:
                           "For a date that recurs every year, as MM-DD: a birthday, wedding anniversary, or the like. Use this INSTEAD of dueAt for those, because they have no year. Leave empty for anything that happens once.",
                       },
+                      // Declared here because the system prompt asks for it. A
+                      // tool-call schema the prompt contradicts is a 400 from
+                      // Groq, so a missing field here does not degrade the
+                      // feature -- it breaks it, silently, as a failed request.
+                      // Not in `required`: no reason given is a valid outcome and
+                      // must stay absent rather than be invented.
+                      reason: {
+                        // Accepts null as well as string, and that is not
+                        // leniency. Asked to leave a field empty, this model
+                        // returns null rather than omitting it or sending "",
+                        // and a plain `type: "string"` turns that into a 400 and
+                        // loses the whole extraction. asString() already maps
+                        // null and "" to undefined, so no reason stays absent.
+                        type: ["string", "null"],
+                        description:
+                          "Corrections only: the writer's OWN reason for the instruction, quoted or closely paraphrased. Use null if they gave no reason. Never invent one.",
+                      },
                       reasoning: { type: "string", description: "One sentence: why this is worth keeping." },
                       confidence: { type: "number", minimum: 0, maximum: 1 },
                       explicit: { type: "boolean" },
@@ -329,7 +361,10 @@ async function extractRaw(
   });
 
   if (!response.ok) {
-    throw new Error(`Groq responded ${response.status}`);
+    // The body matters. "Groq responded 400" alone is unactionable -- it does not
+    // say WHICH part of the request was wrong, which is the only useful part.
+    const detail = await response.text().catch(() => "");
+    throw new Error(`Groq responded ${response.status}${detail ? `: ${detail.slice(0, 300)}` : ""}`);
   }
 
   const payload = (await response.json()) as {

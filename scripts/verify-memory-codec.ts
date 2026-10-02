@@ -18,7 +18,7 @@ import {
   toDisplayText,
   todayISO,
 } from "../shared/memory-codec.ts";
-import { type PersonMemory } from "../shared/types.ts";
+import { MEMORY_TYPES, type PersonMemory } from "../shared/types.ts";
 
 let failures = 0;
 
@@ -227,6 +227,17 @@ section("a correction keeps its reason");
   // A hand-edited or foreign blob with a non-string reason must be refused whole.
   const hostile = serializeMemory(c).replace(/"reason":"[^"]*"/, '"reason":{"evil":true}');
   check("a reason that is not a string is refused, not coerced", parseMemory(hostile) === null);
+}
+
+section("the extraction schema cannot drift from the memory model");
+{
+  // capture.ts used to keep its own copy of the type list. It fell behind, the
+  // tool schema rejected every correction the model correctly emitted, and the
+  // feature failed as an unexplained 400. This asserts they are the same list,
+  // and that corrections are actually in it.
+  check("correction is a real memory type", MEMORY_TYPES.includes("correction"));
+  check("the list has no duplicates", new Set(MEMORY_TYPES).size === MEMORY_TYPES.length);
+  check("nothing is empty", MEMORY_TYPES.every((t) => typeof t === "string" && t.length > 0));
 }
 
 // ─── Result ─────────────────────────────────────────────────────────────────
