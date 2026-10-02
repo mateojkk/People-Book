@@ -44,7 +44,10 @@ export function SignIn({
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-xl flex-col justify-center px-6 py-12">
-      <a href="/" className="flex w-fit items-center gap-2.5 text-faint transition-colors hover:text-muted">
+      <a
+        href="/"
+        className="-mx-2 flex min-h-11 w-fit items-center gap-2.5 rounded px-2 text-faint transition-colors hover:text-muted"
+      >
         <Mark />
         <span className="text-[13px] font-bold">People Book</span>
       </a>
@@ -67,7 +70,7 @@ export function SignIn({
             ) : (
               <button
                 onClick={onSignIn}
-                className="rounded-lg bg-accent px-4 py-2.5 text-[13px] font-bold text-base transition-opacity hover:opacity-90"
+                className="min-h-11 rounded-lg bg-accent px-5 py-3 text-[13px] font-bold text-base transition-opacity hover:opacity-90"
               >
                 Sign the message
               </button>

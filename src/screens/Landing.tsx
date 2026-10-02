@@ -40,7 +40,7 @@ export function Landing({ onSignIn }: { onSignIn: () => void }) {
       <div className="mt-7 flex flex-wrap items-center gap-3">
         <button
           onClick={onSignIn}
-          className="rounded-lg bg-accent px-4 py-2.5 text-[13px] font-bold text-base transition-colors hover:bg-accent/85"
+          className="min-h-11 rounded-lg bg-accent px-5 py-3 text-[13px] font-bold text-base transition-colors hover:bg-accent/85"
         >
           Sign in with a Sui wallet
         </button>

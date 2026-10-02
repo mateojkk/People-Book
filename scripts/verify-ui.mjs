@@ -174,6 +174,26 @@ const nested = await page.evaluate(() => {
 });
 check("nothing is nested inside a form control", nested.length === 0, nested.join(", "));
 
+// ── Tap targets ─────────────────────────────────────────────────────────────
+section("every control is big enough to hit with a thumb");
+
+// 44px is the floor on mobile. The landing CTA was 39.5px and the back-link on
+// the sign-in screen was 20px, which is the size of the text inside it.
+for (const path of ["/", "/signin"]) {
+  const phone = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await phone.route("**/api/auth/whoami", (r) => r.fulfill({ json: { signedIn: false } }));
+  await phone.route("**/api/health", (r) => r.fulfill({ json: { ok: true, config: { groq: true } } }));
+  await phone.goto(BASE + path, { waitUntil: "networkidle" });
+  await phone.waitForTimeout(500);
+  const smallest = await phone.evaluate(() =>
+    Math.min(...[...document.querySelectorAll("button, a")].map((e) => e.getBoundingClientRect().height).filter((x) => x > 0)),
+  );
+  check(`${path} has no control under 44px`, smallest >= 44, `${smallest}px`);
+  const overflow = await phone.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
+  check(`${path} does not overflow a phone`, !overflow);
+  await phone.close();
+}
+
 // ── The rail ─────────────────────────────────────────────────────────────────
 section("the rail is readable without hovering");
 
