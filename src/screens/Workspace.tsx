@@ -36,14 +36,19 @@ function Notice({ onOpen }: { onOpen: () => void }) {
   if (!notice) return null;
 
   return (
+    /* Contained to the same measure as the conversation, so the sentence and its
+       "Open" stay together. Stretched across a wide screen they read as two
+       unrelated things 1200 pixels apart. */
     <button
       onClick={onOpen}
-      className="group flex w-full shrink-0 items-center gap-3 border-b border-rule bg-raised px-5 py-2.5 text-left transition-colors hover:bg-panel"
+      className="group w-full shrink-0 border-b border-rule bg-raised px-5 py-2.5 text-left transition-colors hover:bg-panel"
     >
-      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
-      <p className="flex-1 text-[12.5px] leading-5 text-text">{notice}</p>
-      <span className="shrink-0 text-[11.5px] text-faint transition-colors group-hover:text-muted">
-        Open
+      <span className="mx-auto flex w-full max-w-thread items-center gap-3">
+        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
+        <p className="flex-1 text-[12.5px] leading-5 text-text">{notice}</p>
+        <span className="shrink-0 whitespace-nowrap text-[11.5px] text-faint transition-colors group-hover:text-muted">
+          Open
+        </span>
       </span>
     </button>
   );
@@ -86,7 +91,7 @@ export function Workspace({
   return (
     <div className="flex h-screen overflow-hidden bg-base">
       <aside
-        className={`hidden shrink-0 flex-col border-r border-rule bg-base transition-all duration-200 lg:flex ${
+        className={`hidden shrink-0 flex-col overflow-hidden border-r border-rule bg-base transition-all duration-200 lg:flex ${
           sidebarCollapsed ? "w-14 items-center" : "w-60"
         }`}
       >
@@ -95,30 +100,42 @@ export function Workspace({
           {!sidebarCollapsed && <span className="text-[15px] font-semibold tracking-tight">People Book</span>}
         </div>
 
-        <nav className="px-2">
+        <nav className={`flex flex-col gap-0.5 ${sidebarCollapsed ? "w-full px-2" : "px-2"}`}>
           <button
             onClick={() => setTab("talk")}
             aria-current={tab === "talk"}
-            className="rail-item flex w-full items-center gap-2.5 px-2.5 py-2 text-left text-[13px] text-quiet"
+            title={sidebarCollapsed ? "Talk to it" : undefined}
+            aria-label="Talk to it"
+            className={`rail-item flex w-full items-center gap-2.5 py-2 text-left text-[13px] text-quiet ${
+              sidebarCollapsed ? "justify-center px-0" : "px-2.5"
+            }`}
           >
             <Icon name="talk" />
-            <span>Talk to it</span>
+            {!sidebarCollapsed && <span>Talk to it</span>}
           </button>
           <button
             onClick={() => setTab("notifications")}
             aria-current={tab === "notifications"}
-            className="rail-item flex w-full items-center gap-2.5 px-2.5 py-2 text-left text-[13px] text-quiet"
+            title={sidebarCollapsed ? "Notifications" : undefined}
+            aria-label="Notifications"
+            className={`rail-item flex w-full items-center gap-2.5 py-2 text-left text-[13px] text-quiet ${
+              sidebarCollapsed ? "justify-center px-0" : "px-2.5"
+            }`}
           >
             <Icon name="notifications" />
-            <span>Notifications</span>
+            {!sidebarCollapsed && <span>Notifications</span>}
           </button>
           <button
             onClick={() => setTab("book")}
             aria-current={tab === "book"}
-            className="rail-item flex w-full items-center gap-2.5 px-2.5 py-2 text-left text-[12.5px] text-faint"
+            title={sidebarCollapsed ? "the book" : undefined}
+            aria-label="the book"
+            className={`rail-item flex w-full items-center gap-2.5 py-2 text-left text-[12.5px] text-faint ${
+              sidebarCollapsed ? "justify-center px-0" : "px-2.5"
+            }`}
           >
             <BookmarkIcon className="h-[15px] w-[15px]" />
-            <span>the book</span>
+            {!sidebarCollapsed && <span>the book</span>}
           </button>
         </nav>
 

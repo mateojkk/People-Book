@@ -43,7 +43,7 @@ export function SignIn({
   const [accountDraft, setAccountDraft] = useState("");
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-lg flex-col justify-center px-5 py-10">
+    <main className="mx-auto flex min-h-screen w-full max-w-xl flex-col justify-center px-6 py-12">
       <a href="/" className="flex w-fit items-center gap-2.5 text-faint transition-colors hover:text-muted">
         <Mark />
         <span className="text-[13px] font-bold">People Book</span>

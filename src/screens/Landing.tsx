@@ -12,7 +12,7 @@
  */
 export function Landing({ onSignIn }: { onSignIn: () => void }) {
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-xl flex-col justify-center px-5 py-10">
+    <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col justify-center px-6 py-12">
       <div className="flex items-center gap-2.5">
         <Mark />
         <span className="text-sm font-bold tracking-tight">People Book</span>
@@ -24,13 +24,13 @@ export function Landing({ onSignIn }: { onSignIn: () => void }) {
         in your life.
       </h1>
 
-      <p className="mt-4 max-w-[30rem] text-[14px] leading-6 text-muted">
+      <p className="mt-4 max-w-[36rem] text-[14.5px] leading-7 text-muted">
         Birthdays, promises you have not kept, people who have gone quiet, the way
         someone takes a call. You talk, it works out what is worth keeping — and
         then it brings things up before you have to ask.
       </p>
 
-      <p className="mt-3 max-w-[30rem] text-[13px] leading-6 text-faint">
+      <p className="mt-3 max-w-[36rem] text-[13.5px] leading-7 text-faint">
         No account to sign up for. No server holding your life. Your memory lives
         in a Walrus Memory account that you own on Sui, and this app holds a
         delegate key you granted — which you can take away on chain, at any time,

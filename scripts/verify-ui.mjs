@@ -123,7 +123,7 @@ const landingBox = await anon.evaluate(() => {
   const cs = getComputedStyle(main);
   return { width: main.getBoundingClientRect().width, padTop: parseFloat(cs.paddingTop), padBottom: parseFloat(cs.paddingBottom) };
 });
-check("the landing column is not wider than the text needs", landingBox.width <= 640, `${landingBox.width}px`);
+check("the landing column has room to breathe", landingBox.width >= 700 && landingBox.width <= 820, `${landingBox.width}px`);
 check("and is not floating in a tall empty page", landingBox.padTop <= 56, `${landingBox.padTop}px`);
 await anon.close();
 
@@ -214,6 +214,23 @@ await page.waitForTimeout(500);
 
 const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
 check("nothing overflows horizontally", !overflow);
+
+// ── The collapsed rail ──────────────────────────────────────────────────────
+section("the rail collapses without clipping itself");
+
+await page.getByRole("button", { name: /Collapse sidebar/i }).click();
+await page.waitForTimeout(300);
+const folded = await page.evaluate(() => {
+  const el = document.querySelector("aside");
+  return { w: el?.getBoundingClientRect().width ?? 0, scrollW: el?.scrollWidth ?? 0, text: (el?.innerText ?? "").trim() };
+});
+// It was 56px wide holding 108px of content, so every label rendered clipped
+// mid-word: "alk to it", "otifications", "he book".
+check("collapsed rail has no overflow", folded.scrollW <= folded.w + 1, `${folded.scrollW}px of content in ${folded.w}px`);
+check("and shows icons only", folded.text === "", JSON.stringify(folded.text));
+check("with accessible names still on every one", await page.getByRole("button", { name: "Notifications" }).count() > 0);
+await page.getByRole("button", { name: /Expand sidebar/i }).click();
+await page.waitForTimeout(300);
 
 // ── It survives a reload of a narrow screen ──────────────────────────────────
 section("narrow screens");
