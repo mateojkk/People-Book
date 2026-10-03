@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api";
 import { markSeen } from "../lib/unread";
+import * as browserNotify from "../lib/notify.ts";
+import { PermissionToggle } from "./PermissionToggle.tsx";
 
 /**
  * Notifications.
@@ -54,6 +56,28 @@ export function NotificationsView() {
     }
   }, []);
 
+  // Fire a notification for anything already due, on open, without prompting.
+  //
+  // Asking and firing are separate on purpose: the prompt lives behind the
+  // toggle so it is never declined reflexively, but once granted there is no
+  // reason to wait for the user to press anything before telling them the thing
+  // they asked to be told.
+  useEffect(() => {
+    if (browserNotify.currentPermission() !== "granted") return;
+    void (async () => {
+      try {
+        const today = await api.get<Today>("/api/today");
+        const due = today.tasks.filter((t) => t.active && (t.urgency === "overdue" || t.urgency === "today"));
+        if (!due.length || !today.notice) return;
+        await browserNotify.notify([
+          { tag: `today-${today.notice.slice(0, 40)}`, title: "People Book", body: today.notice },
+        ]);
+      } catch {
+        // A notification failing must never surface as an error in the panel.
+      }
+    })();
+  }, []);
+
   useEffect(() => {
     // Opening it is the read receipt, and it is on open rather than on scroll or
     // on reaching the end: WhatsApp clears on open, and anything cleverer is how
@@ -98,6 +122,21 @@ export function NotificationsView() {
   const stale = data.tasks.filter((t) => !t.active);
 
   return (
+    <>
+      {/* Permission lives here, not on arrival. See PermissionToggle. */}
+      <PermissionToggle
+        onNotify={async () => {
+          // Fired from the same data the panel is already showing, so the browser
+          // notification says exactly what the page says. If these two ever
+          // disagree, the notification is the one that gets believed.
+          const due = data.tasks.filter((t) => t.active && (t.urgency === "overdue" || t.urgency === "today"));
+          if (!due.length || !data.notice) return 0;
+          return browserNotify.notify([
+            { tag: `today-${data.notice.slice(0, 40)}`, title: "People Book", body: data.notice },
+          ]);
+        }}
+      />
+
     <div className="space-y-7 pb-10">
       <header>
         {/* Reached from the notification, not from the rail. The conversation is
@@ -146,6 +185,7 @@ export function NotificationsView() {
         </section>
       )}
     </div>
+    </>
   );
 }
 
