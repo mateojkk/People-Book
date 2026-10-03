@@ -377,6 +377,33 @@ section("the page is not black while the video loads");
   await b2.close();
 }
 
+// ── The rail footer ──────────────────────────────────────────────────────────
+section("the rail footer reads as separate things");
+
+// It rendered as the single word "ProfileDisconnect". Two buttons, both
+// inline-block, dropped either side of nothing in particular, so they flowed onto
+// one line. Nothing looked broken in a DOM diff and nothing threw -- it just read
+// as a typo in the product's own name.
+{
+  const rail = await page.evaluate(() => {
+    const btns = [...document.querySelectorAll("aside button")];
+    return btns.map((b) => {
+      const r = b.getBoundingClientRect();
+      return { top: Math.round(r.top), label: (b.innerText || "").trim().replace(/\n/g, " ") };
+    });
+  });
+  const tops = rail.map((b) => b.top);
+  check("no two controls in the rail share a line", new Set(tops).size === tops.length, JSON.stringify(rail));
+
+  // And the footer must not read as one run-on token.
+  const words = await page.evaluate(() => {
+    const aside = document.querySelector("aside");
+    return (aside?.innerText ?? "").split(/\s+/).filter(Boolean);
+  });
+  const glued = words.filter((w) => /^[a-z]+[A-Z]/.test(w) || /Disconnect$/.test(w) && w.length > 12);
+  check("nothing is glued to the next word", glued.length === 0, JSON.stringify(glued));
+}
+
 // ── Tap targets ─────────────────────────────────────────────────────────────
 section("every control is big enough to hit with a thumb");
 

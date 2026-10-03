@@ -217,29 +217,45 @@ export function Workspace({
             </button>
           )}
           {!sidebarCollapsed && (
+            /* The address IS the way to your own profile. It was a line of grey
+               text, then two buttons -- "Profile" and "Disconnect" -- sat beside it
+               as inline-block elements and rendered as the single word
+               "ProfileDisconnect". The address being clickable also means the
+               collapsed rail can reach the profile, which a button hidden inside the
+               expanded block could never do. */
             <div className="px-4 py-2.5">
-              <p className="mono truncate text-[11px] text-faint">
-                {address?.slice(0, 6)}…{address?.slice(-4)}
-              </p>
-              <p className="mt-1 text-[11px] text-faint">Yours, on Sui</p>
               <button
                 type="button"
                 onClick={() => setTab("profile")}
-                className="mt-1.5 text-[11px] text-faint transition-colors hover:text-muted"
+                className="-mx-1.5 flex w-full items-center gap-2 rounded px-1.5 py-1 text-left transition-colors hover:bg-panel"
               >
-                Profile
+                <Avatar />
+                <span className="min-w-0">
+                  <span className="mono block truncate text-[11px] text-muted">
+                    {address?.slice(0, 6)}…{address?.slice(-4)}
+                  </span>
+                  <span className="block text-[11px] text-faint">Yours, on Sui</span>
+                </span>
               </button>
-              {/* Leaving is not the same as revoking. This ends the session and
-                  unplugs the wallet; the delegate key stays on the account until
-                  it is removed on chain, which is a separate thing to do. */}
               <button
                 type="button"
                 onClick={onDisconnect}
-                className="mt-1.5 text-[11px] text-faint transition-colors hover:text-muted"
+                className="mt-1.5 ml-1.5 text-[11px] text-faint transition-colors hover:text-muted"
               >
                 Disconnect
               </button>
             </div>
+          )}
+          {sidebarCollapsed && (
+            <button
+              type="button"
+              onClick={() => setTab("profile")}
+              aria-label="Your profile"
+              title="Your profile"
+              className="mx-auto mb-1 grid h-11 w-11 place-items-center rounded-lg text-faint transition-colors hover:bg-panel hover:text-text"
+            >
+              <Avatar />
+            </button>
           )}
           <div
             className={`flex bg-base px-2 py-2.5 ${
@@ -360,6 +376,35 @@ export function BookmarkIcon({ className = "h-4 w-4" }: { className?: string }) 
       <path d="M4 17.9808V9.70753C4 6.07416 4 4.25748 5.17157 3.12874C6.34315 2 8.22876 2 12 2C15.7712 2 17.6569 2 18.8284 3.12874C20 4.25748 20 6.07416 20 9.70753V17.9808C20 20.2867 20 21.4396 19.2272 21.8523C17.7305 22.6514 14.9232 19.9852 13.59 19.1824C12.8168 18.7168 12.4302 18.484 12 18.484C11.5698 18.484 11.1832 18.7168 10.41 19.1824C9.0768 19.9852 6.26947 22.6514 4.77285 21.8523C4 21.4396 4 20.2867 4 17.9808Z" />
     </svg>
   );
+}
+
+/**
+ * The rail avatar.
+ *
+ * Read straight from localStorage rather than lifted into state: it is set on the
+ * Profile screen and read here, and threading it through the tree for a 128px
+ * JPEG would be more structure than a picture is worth. `storage` is in a
+ * try/catch because a browser that throws on access should cost the picture, not
+ * the rail.
+ */
+function Avatar() {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    try {
+      setSrc(localStorage.getItem("pb.profile.avatar.v1"));
+    } catch {
+      // No picture. The mark stands in.
+    }
+  }, []);
+  if (!src) {
+    return (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" className="shrink-0 text-accent">
+        <path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M4.93 19.07l14.14-14.14" strokeLinecap="round" />
+        <circle cx="12" cy="12" r="3.5" fill="currentColor" stroke="none" />
+      </svg>
+    );
+  }
+  return <img src={src} alt="" className="h-5 w-5 shrink-0 rounded-full object-cover" />;
 }
 
 function Icon({ name }: { name: IconName }) {
