@@ -112,15 +112,24 @@ export function Workspace({
     let alive = true;
     const read = async () => {
       try {
-        const data = await api.get<{ history?: { date: string }[] }>("/api/today");
-        if (alive) setUnread(unreadCount((data.history ?? []).map((h) => h.date)));
+        const data = await api.get<{ history?: { date: string }[]; tasks?: { active: boolean }[] }>("/api/today");
+        if (alive) {
+          setUnread(
+            unreadCount({
+              dates: (data.history ?? []).map((h) => h.date),
+              // Only genuinely active tasks. A settled or missed one is history,
+              // not something waiting on you.
+              openTasks: (data.tasks ?? []).filter((t) => t.active).length,
+            }),
+          );
+        }
       } catch {
         // No badge is better than a wrong one, and better than a rail that fails.
         if (alive) setUnread(0);
       }
     };
     void read();
-    const onSeen = () => setUnread(0);
+    const onSeen = () => void read();
     window.addEventListener(SEEN_EVENT, onSeen);
     return () => {
       alive = false;

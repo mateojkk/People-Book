@@ -67,19 +67,55 @@ export function markSeen(): void {
   if (typeof window !== "undefined") window.dispatchEvent(new Event(SEEN_EVENT));
 }
 
+/** Midnight UTC of the day an ISO instant falls on, as YYYY-MM-DD. */
+function dayOf(instant: string): string {
+  const at = Date.parse(instant);
+  return Number.isNaN(at) ? instant.slice(0, 10) : new Date(at).toISOString().slice(0, 10);
+}
+
 /**
- * How many of these notifications have not been seen.
+ * How many of these notification days you have not opened.
  *
- * Compared on the notification's own date, not on fetch time, so a notification
- * that arrived while the tab was closed still counts as unseen.
+ * Compared at DAY granularity, and this was a real bug. The notice dates arrive
+ * as "YYYY-MM-DD", which Date.parse turns into midnight UTC, and they were being
+ * compared against the full ISO instant of when you last opened the tab. So
+ * today's notice was midnight and your last open was, say, 14:22 -- midnight is
+ * always earlier, and today's notifications could never count again once you had
+ * opened it that day. A badge that is always zero on the day you most want it is
+ * worse than no badge.
  */
-export function unreadCount(dates: readonly string[]): number {
+export function unseenNotices(dates: readonly string[]): number {
   const since = seenAt();
-  // Never opened it, so everything on file is unread. Showing 0 to someone who
+  // Never opened it, so everything on file is unseen. Showing 0 to someone who
   // has not looked yet would be the one dishonest answer available here.
-  if (!since) return Math.min(dates.length, MAX_SHOWN);
-  const cutoff = Date.parse(since);
-  return Math.min(dates.filter((d) => Date.parse(d) > cutoff).length, MAX_SHOWN);
+  if (!since) return dates.length;
+  const cutoff = dayOf(since);
+  return dates.filter((d) => d.slice(0, 10) > cutoff).length;
+}
+
+/**
+ * The number on the badge.
+ *
+ * Outstanding things, which is two things added together:
+ *
+ *   - notices from days you have not opened, and
+ *   - tasks still marked active, i.e. not yet clicked done.
+ *
+ * The second half is the part that was missing and it is the part that matters.
+ * Asked for a badge while holding an unclicked task and getting nothing, because
+ * opening the tab had already cleared the count even though the task was right
+ * there in the list. That is WhatsApp's behaviour applied to the wrong subject:
+ * an unread message clears when you read it, and the equivalent of reading a
+ * task here is finishing it, not looking at it.
+ *
+ * So the badge clears when the tab is open AND nothing is outstanding -- which
+ * is what a person actually expects, and why the pill was absent before.
+ */
+export function unreadCount(opts: {
+  dates: readonly string[];
+  openTasks: number;
+}): number {
+  return Math.min(unseenNotices(opts.dates) + Math.max(0, opts.openTasks), MAX_SHOWN);
 }
 
 /** What the badge should print. "9+" is easier to read than "99". */

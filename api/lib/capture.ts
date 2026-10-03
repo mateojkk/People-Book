@@ -29,46 +29,39 @@ import {
 import { recurringDate, monthForDayOnly, isFullMonthDay } from "./dates.ts";
 
 
-const SYSTEM = `You extract durable facts about people from a message someone sent to their private assistant.
-
-You are NOT summarising and NOT conversing. You return structured candidates only.
+const SYSTEM = `Extract durable facts from a message sent to someone's private assistant. Structured candidates only -- not a summary, not a reply.
 
 Types, and only these:
-- "promise": the writer committed to doing something for or about someone. "I'll call her Sunday." "I said I'd send the photo."
-- "event": something that happened or is scheduled, with a date. "Her interview moved to the 2nd." "Got the offer."
-- "trait": a durable fact about someone. "Vegetarian." "Works nights." "Allergic to peanuts."
-- "taboo": something the writer explicitly does not want mentioned to that person. "Never bring up the divorce with him."
-- "howto": how to interact with someone. "Call her, don't text." "He'll ask about the job, be ready."
-- "update": a current state that replaces an older fact. "She moved to Lisbon in March."
-- "correction": a standing instruction to the ASSISTANT about how to work. The person is always "you" -- the writer is correcting how the assistant behaves, not describing anyone else.
-    "don't use Inter again"          "no, never prompt text that didn't happen"   "stop asking me before you edit files"
-    "use JetBrains Mono not Inter"   "remember I hate emoji"                    "always run the tests before you say done"
+- "promise": they committed to doing something. "I'll call her Sunday."
+- "event": something that happened or is scheduled. "Her interview moved to the 2nd."
+- "trait": a durable fact about someone. "Vegetarian." "Works nights."
+- "taboo": never mention this to that person. "Never bring up the divorce with him."
+- "howto": how to interact with someone. "Call her, don't text."
+- "update": a current state replacing an older fact. "She moved to Lisbon in March."
+- "correction": a standing instruction to the ASSISTANT about how to work. Person is always "you".
+    "don't use Inter again"  "never prompt text that didn't happen"  "always run the tests first"  "remember I hate emoji"
 
-Hard rules:
-1. Extract only what is stated. Never infer, never embellish, never complete a thought.
-2. If the message is banter, small talk, or about something other than people, return an empty array. An empty array is a correct and common answer.
-3. Every candidate MUST name a person from the message. If you cannot name one, drop it. The ONE exception is type "correction": those are addressed to the assistant and the person is always "you", with no other name involved.
-4. Use the writer themself as "you" only when the writer makes a commitment or states something about themselves.
-5. Put the claim in the third person, as a fact about the person, not as a quote. "Promised to find the thing from the shop." not "I told Maya I'd find the thing."
-6. "reasoning" is one short sentence on why this is worth keeping permanently, in the third person.
-7. "confidence" is your honest 0..1 estimate that this is a durable, correctly-attributed fact. Be harsh. A one-off or a guess belongs below 0.55 and will be discarded.
-8. "explicit" is true only when the writer directly instructed you to remember it ("remember that...", "don't forget...").
-9. Dates must be ISO YYYY-MM-DD. Use today's date for "today"/"tomorrow" (tomorrow = +1 day). Omit a date you cannot resolve rather than guessing.
-10. Never store a taboo's subject matter as if it were normal news. A taboo is one candidate, type "taboo".
-11. RECURRING DATES. Some dates come round every year and have no year attached: a birthday, a wedding anniversary, the day someone's lease renews. For these you MUST set "anniversary" to the day and month as "MM-DD" — zero padded, "01-05" not "1-5". Do NOT put these in "dueAt": there is no year to put there, and a due date in the past is a date this app will never mention again.
+Rules:
+1. Only what is stated. Never infer or embellish.
+2. Banter, small talk, or nothing durable -> empty array. Empty is a correct and common answer.
+3. Name a person from the message or drop it. Sole exception: "correction", which is addressed to the assistant and uses "you".
+4. Third person, as a fact. "Promised to find the thing." not "I told Maya I'd find the thing."
+5. "confidence" is your honest 0..1 chance this is durable and correctly attributed. Be harsh; below 0.55 is discarded.
+6. "explicit" is true only if they said "remember that" or "don't forget".
+7. Dates are ISO YYYY-MM-DD. "today" is ${new Date().toISOString().slice(0, 10)}, "tomorrow" is +1 day. Omit what you cannot resolve.
+8. A taboo is one candidate. Never also store its subject as news.
+9. RECURRING dates -- birthdays, anniversaries, annual renewals -- have no year, so put the day in "anniversary" as "MM-DD", zero padded. NEVER "dueAt": a due date in the past is a date this app will never mention again.
     "Mara's birthday is the 14th"        -> anniversary "11-14"
     "Dev gets married on the 2nd of June" -> anniversary "06-02"
-    "It's Nila's first birthday on the 9th" -> anniversary "09-09"
-    "our anniversary is March 3rd"        -> anniversary "03-03"
-    If the message gives a year, or the date is a one-off ("her flight is on the 3rd"), use "dueAt" instead and leave "anniversary" out.
-
-12. CORRECTIONS, and why the reason matters more than the instruction. When the writer corrects how you work -- "no, not like that", "don't do X", "always do Y", "remember I said Z" -- emit one "correction" candidate. It is a different type from everything else because it is the only one whose value comes from persisting across unrelated future tasks.
-    - Put ONLY the standing instruction in "text", stripped of the "no," / "hey," and the incident that triggered it. The incident is not part of the rule.
-        "no, never prompt text that didn't happen" -> text: "Never prompt text that did not happen."
-        "stop using Inter, it's a wide face"        -> text: "Do not use Inter."   reason: "It is a wide face and the measure breaks."
-    - Put WHY in "reason", when the writer gives a why. This field is the point of the type: a bare instruction gets broken the next time the situation looks slightly different, because it does not obviously apply. A reason is recognisable when the same problem comes back in new clothes. Quote or closely paraphrase the writer's own reason -- never invent one. If they gave no reason, leave "reason" out entirely. Do not write "because the writer said so."
-    - These are standing rules, so "confidence" should be high and "status" "active". Do not mark a correction as "explicit" unless they said "remember".
-    - A correction about a PERSON is not a correction. "Don't call her, text her" is type "howto" about that person. Only corrections about the assistant's own behaviour are type "correction".
+    A one-off ("her flight is on the 3rd") is "dueAt", and "anniversary" is left out.
+10. CORRECTIONS. One "correction" when they correct how you work. Its value is persisting across unrelated future tasks.
+    - "text" holds ONLY the standing instruction, stripped of the "no," and the incident behind it.
+        "no, never prompt text that didn't happen" -> "Never prompt text that did not happen."
+        "stop using Inter, it's a wide face"        -> "Do not use Inter."  reason: "It is a wide face and the measure breaks."
+    - "remember <something>" about how to work is a correction, not a trait. Dropping this example from the list made "remember I hate emoji" come back as a trait, which is the one regression the trim caused.
+    - "reason" holds WHY, in their own words, when given. This is the point of the type: a bare instruction gets broken the first time it looks inapplicable, a reason is recognisable when the same problem returns. Never invent one -- omit it if none was given.
+    - High "confidence", status "active".
+    - An instruction about a PERSON is not a correction: "don't call her, text her" is "howto" about her.
 
 Today is ${new Date().toISOString().slice(0, 10)}.`;
 

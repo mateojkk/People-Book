@@ -17,6 +17,7 @@ import { SignIn } from "./screens/SignIn.tsx";
 import { ErrorNote } from "./components/bits.tsx";
 import { Routes, Route, Link, useLocation, useNavigate } from "react-router-dom";
 import { Mark } from "./screens/Landing.tsx";
+import { ToastStack, useToasts } from "./components/Toast.tsx";
 import type { PersonMemory } from "./types.ts";
 
 type Tab = "talk" | "notifications" | "book";
@@ -60,6 +61,8 @@ interface Whoami {
 export default function App() {
   const { account, state, signIn, disconnect } = useSignIn();
   const nav = useNavigate();
+  const { toasts, push, dismiss } = useToasts();
+
   const [who, setWho] = useState<Whoami | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
@@ -121,6 +124,21 @@ export default function App() {
 
   const ready = Boolean(who?.signedIn && who.accountId && who.hasDelegate);
 
+  // Announce the moment you get in, once. Keyed on the address so a reconnect
+  // mid-session does not repeat it, and guarded so React's double-invoke in
+  // development cannot fire it twice either.
+  const greeted = useRef<string | null>(null);
+  useEffect(() => {
+    const address = who?.signedIn ? who.address : undefined;
+    if (!ready || !address || greeted.current === address) return;
+    greeted.current = address;
+    push({
+      tone: "info",
+      title: `Signed in as ${address.slice(0, 6)}…${address.slice(-4)}`,
+      detail: "Your book is open. Ask it what happened.",
+    });
+  }, [ready, who?.signedIn, who?.address, push]);
+
   /**
    * Moving forward after the setup click, and only then.
    *
@@ -161,6 +179,7 @@ export default function App() {
 
   return (
     <>
+      <ToastStack toasts={toasts} onDismiss={dismiss} />
       <OnNavigate />
       <Routes>
         <Route path="/" element={<Landing onSignIn={() => nav("/signin")} />} />

@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "keygen": "tsx scripts/generate-delegate-key.ts",
-    "verify": "npm run verify:codec && npm run verify:rank && npm run verify:isolation && npm run verify:dates && npm run verify:tasks && npm run verify:patterns && npm run verify:unread && npm run verify:chat",
+    "verify": "npm run verify:codec && npm run verify:rank && npm run verify:isolation && npm run verify:dates && npm run verify:tasks && npm run verify:patterns && npm run verify:unread && npm run verify:prompt && npm run verify:chat",
     "verify:codec": "tsx scripts/verify-memory-codec.ts",
     "verify:rank": "tsx scripts/verify-ranking.ts",
     "check:registry": "tsx scripts/check-registry.ts",
@@ -25,6 +25,7 @@
     "verify:tasks": "tsx scripts/verify-tasks.ts",
     "verify:patterns": "tsx scripts/verify-patterns.ts",
     "verify:unread": "tsx scripts/verify-unread.ts",
+    "verify:prompt": "tsx scripts/verify-prompt.ts",
     "verify:build": "node scripts/verify-build.mjs",
     "verify:dates": "tsx scripts/verify-dates.ts"
   },
