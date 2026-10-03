@@ -6,6 +6,8 @@
  * The response already carries `dueCount` for the second thing, and conflating
  * them is how you get a badge people learn to ignore.
  */
+export {};
+
 let failures = 0;
 let checks = 0;
 function section(n: string) { console.log(`\n${n}`); }

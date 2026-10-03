@@ -23,7 +23,7 @@
  * served and a retried request is a fresh one.
  */
 
-const BASE = "https://api.groq.com/openai/v1/chat/completions";
+const BASE = process.env.GROQ_URL || "https://api.groq.com/openai/v1/chat/completions";
 
 /**
  * How many times to try before giving up.
