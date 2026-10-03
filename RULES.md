@@ -259,6 +259,24 @@ reasoning that produces real breaches. If dev ever needs real TLS again, the way
 to do it is a locally trusted CA (mkcert) so the origin is genuinely valid, not a
 self-signed one that trains people to click through warnings.
 
+## 23. Never narrate the roadmap in the interface
+
+The notification permission said: "Waking you when it is closed is a different
+mechanism and is not built." True, and completely wrong in that place.
+
+It is a build note in front of someone trying to use a working feature. It
+advertises a gap nobody asked about, it makes something that works read as
+unfinished, and it is the tell of a project that is explaining itself instead of
+shipping. Being scrupulous about what you have not built is fine; being scrupulous
+*at the user's expense* is just noise with good intentions.
+
+The line to hold: **describe the behaviour, never the roadmap.** "Arrives while
+the app is open" is a complete and true sentence, and it is also short. The
+reasoning about Web Push belongs in a code comment, where the next person finds
+it and no user ever does.
+
+---
+
 ## The one above the others
 
 Everything here is a variation of it: **the gap between what was verified and

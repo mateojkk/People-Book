@@ -7,13 +7,19 @@
  * Notifications, where being told something is the entire reason to want telling
  * about it.
  *
- * ── What is promised, and what is not ────────────────────────────────────────
- * The copy says "while the app is open", because that is exactly true. Not
- * waking you when it is closed needs Web Push -- VAPID keys, a stored
- * subscription, signed requests and a scheduler -- and that is not built. A
- * promise of "you will never miss anything" would be false, and notifications
- * that only sometimes arrive are worse than none, because they train the
- * dismissal swipe.
+ * ── What the copy may and may not say ────────────────────────────────────────
+ * It must not promise more than this does. Waking you when the app is closed
+ * needs Web Push -- VAPID keys, a stored subscription, signed requests and a
+ * scheduler -- and that is not built.
+ *
+ * It must ALSO not narrate that. An earlier version said so in the interface:
+ * "Waking you when it is closed is a different mechanism and is not built." That
+ * is a build note in a place a person is trying to use something. It advertises a
+ * gap nobody asked about, and it makes a working feature read as unfinished.
+ *
+ * So the rule is: describe the behaviour, never the roadmap. "Arrives while the
+ * app is open" is a complete and true sentence. The reasoning about Web Push
+ * belongs in this comment, where the next person finds it.
  */
 import { useCallback, useEffect, useState } from "react";
 import * as browserNotify from "../lib/notify.ts";
@@ -51,8 +57,8 @@ export function PermissionToggle({ onNotify }: { onNotify: () => Promise<number>
   if (state === "granted") {
     return (
       <p className="rounded-lg bg-panel px-3.5 py-2.5 text-[11.5px] leading-5 text-faint">
-        Notifications are on, and arrive <span className="text-muted">while this app is open</span>. Waking you when
-        it is closed is a different mechanism and is not built.
+        Notifications are on. They arrive while this app is open, and only about
+        things that are actually due.
       </p>
     );
   }
@@ -68,7 +74,7 @@ export function PermissionToggle({ onNotify }: { onNotify: () => Promise<number>
   return (
     <div className="rounded-lg bg-panel px-3.5 py-3">
       <p className="text-[12px] leading-5 text-muted">
-        Turn on notifications and it will tell you when something is due, without you opening this.
+        It will tell you when something is due, without you having to come and look.
       </p>
       <button
         onClick={() => void ask()}
@@ -78,8 +84,7 @@ export function PermissionToggle({ onNotify }: { onNotify: () => Promise<number>
         {busy ? "Waiting for your browser…" : "Turn on notifications"}
       </button>
       <p className="mt-1.5 text-[11px] text-faint">
-        These arrive while the app is open. Reaching you when it is closed needs a different
-        mechanism, which is not built.
+        You can change this at any time in your browser&rsquo;s site settings.
       </p>
     </div>
   );
