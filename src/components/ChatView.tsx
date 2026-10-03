@@ -129,6 +129,11 @@ export function ChatView({ onOpenBook }: { onOpenBook?: () => void }) {
   }, [turns, send]);
 
   const undo = useCallback(async (turnId: string, memoryId: string) => {
+    // Remember what it looked like, so a failure can put back exactly that rather
+    // than an approximation.
+    const before = turns.find((t) => t.id === turnId);
+    const card = before?.saved?.find((x) => x.id === memoryId);
+
     // Optimistic: the user asked for it gone, so show it gone.
     setTurns((prev) =>
       prev.map((t) =>
@@ -140,13 +145,20 @@ export function ChatView({ onOpenBook }: { onOpenBook?: () => void }) {
     try {
       await api.post("/api/chat/undo", { id: memoryId });
     } catch {
-      // Put it back. It is still in the book, and pretending otherwise would be a
-      // lie the ledger does not agree with.
+      // Put the card back. The comment here used to claim this and the code only
+      // removed the id from `undone`, never restoring `saved` -- so a failed undo
+      // hid a memory that was still in the book and still producing nudges. That
+      // is the exact state the comment says must not happen, and it was the
+      // state that happened.
       setTurns((prev) =>
-        prev.map((t) => (t.id === turnId ? { ...t, undone: (t.undone ?? []).filter((id) => id !== memoryId) } : t)),
+        prev.map((t) => {
+          if (t.id !== turnId) return t;
+          const restored = card ? [...(t.saved ?? []), card] : (t.saved ?? []);
+          return { ...t, saved: restored, undone: (t.undone ?? []).filter((id) => id !== memoryId) };
+        }),
       );
     }
-  }, []);
+  }, [turns]);
 
   // Escape stops a stream, the way it does everywhere else.
   useEffect(() => {
@@ -329,11 +341,24 @@ function TurnBlock({
 }) {
   const [copied, setCopied] = useState(false);
 
+  // Cleared on unmount. The old timeout was never cancelled, so it fired
+  // setState on a component that no longer existed.
+  useEffect(() => {
+    if (!copied) return;
+    const timer = window.setTimeout(() => setCopied(false), 1200);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
+
   const copy = useCallback(() => {
-    void navigator.clipboard?.writeText(turn.text).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1200);
-    });
+    // Handled, not voided. `navigator.clipboard` rejects on an insecure origin,
+    // and this app explicitly runs over plain http on localhost -- so the promise
+    // rejects routinely, and `void` discarded it as an unhandled rejection while
+    // "Copied" never appeared and the user learned that the button is broken.
+    // Say what happened instead.
+    navigator.clipboard
+      ?.writeText(turn.text)
+      .then(() => setCopied(true))
+      .catch(() => setCopied(false));
   }, [turn.text]);
 
   if (turn.role === "you") {

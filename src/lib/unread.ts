@@ -118,7 +118,15 @@ export function unreadCount(opts: {
   return Math.min(unseenNotices(opts.dates) + Math.max(0, opts.openTasks), MAX_SHOWN);
 }
 
-/** What the badge should print. "9+" is easier to read than "99". */
+/**
+ * What the badge should print.
+ *
+ * The caller already clamps with unreadCount, so a `count > MAX_SHOWN` branch
+ * here was unreachable and its comment claimed a "9+" that the code would never
+ * produce. Clamping and formatting are separated deliberately: this formats
+ * whatever it is given, including a raw count, so it is testable on its own and
+ * cannot silently disagree with the clamp.
+ */
 export function badgeLabel(count: number): string {
   return count > MAX_SHOWN ? `${MAX_SHOWN}+` : String(count);
 }

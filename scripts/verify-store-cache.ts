@@ -99,6 +99,44 @@ section("a forget is visible");
   check("gone after forgetting", (await store.listLive()).memories.length === 0, String((await store.listLive()).memories.length));
 }
 
+section("forgetting twice is success, not an error");
+// getById used to read through listLive(), which filters tombstones. So a
+// forgotten memory was unfindable, this guard was unreachable, and forgetting
+// twice threw -- which is what a double-clicked Undo does.
+{
+  const client = fakeClient();
+  const store = buildStore(client) as any;
+  const written = await store.remember({ person: "Maya", type: "trait", text: "vegetarian", confidence: "confirmed" });
+
+  await store.forget(written.id);
+  check("gone from the ledger", (await store.listLive()).memories.length === 0);
+
+  let threw = false;
+  try {
+    await store.forget(written.id);
+  } catch (error: any) {
+    threw = true;
+    if (!/already gone/.test(String(error.message))) throw error;
+  }
+  check("forgetting again does not throw", !threw);
+  check("and the tombstone is still readable by id", (await store.getById(written.id))?.deleted === true);
+  check("while still hidden from the ledger", (await store.listLive()).memories.length === 0);
+}
+
+section("history shares the ledger's enumeration");
+// listHistory used to call enumerate() directly, bypassing the in-flight dedupe
+// that lives in listLive -- so a history request ran a second full enumeration
+// alongside a ledger read instead of joining it.
+{
+  const client = fakeClient();
+  const store = buildStore(client) as any;
+  const written = await store.remember({ person: "Maya", type: "trait", text: "vegetarian", confidence: "confirmed" });
+  await store.listLive();               // warm
+  const before = client.recalls;
+  await Promise.all([store.listLive(), store.listHistory(written.id), store.listLive()]);
+  check("three concurrent reads cost one enumeration", client.recalls === before, `${client.recalls} vs ${before}`);
+}
+
 section("the cache is still a cache");
 {
   // Invalidating on write must not mean re-enumerating on every read, or the fix

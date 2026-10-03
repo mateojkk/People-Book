@@ -74,6 +74,22 @@ check("32nd is refused", recurringDate("birthday is the 32nd") === null, recurri
 check("empty text", recurringDate("") === null);
 check("no date at all", recurringDate("she is vegetarian") === null);
 
+// ── A validator that validates ───────────────────────────────────────────────
+//
+// isFullMonthDay checked only that the month was >= 1, so "99-99" and "13-45"
+// both passed. Harmless today because its one caller feeds it already-validated
+// values, but a validator that validates nothing is worse than none: the next
+// caller will trust it.
+section("a validator that validates");
+{
+  check("99-99 is not a month-day", isFullMonthDay("99-99") === false);
+  check("13-45 is not a month-day", isFullMonthDay("13-45") === false);
+  check("02-30 is not a month-day", isFullMonthDay("02-30") === false);
+  check("undefined is not", isFullMonthDay(undefined) === false);
+  check("11-14 still is", isFullMonthDay("11-14") === true);
+  check("02-29 is, because it exists in a leap year", isFullMonthDay("02-29") === true);
+}
+
 // ── The day closest to the recurring word wins ───────────────────────────────
 section("the right day is picked");
 

@@ -33,6 +33,7 @@ import {
   normalize,
   ourDelegatePublicKey,
   resetDeploymentCache,
+  clearDelegateCache,
   verifyRegistry,
 } from "./lib/account.ts";
 import {
@@ -157,8 +158,11 @@ app.get("/api/health", async (c) => {
   const delegateConfigured = Boolean(process.env.MEMWAL_DELEGATE_KEY);
   const groqConfigured = Boolean(process.env.GROQ_API_KEY);
   const sessionConfigured = Boolean(process.env.SESSION_SECRET);
-  // Cleared each call so a rotation is picked up without a redeploy.
+  // Cleared each call so a rotation is picked up without a redeploy. The delegate
+  // cache goes too: this is the endpoint a person hits while debugging why a
+  // revoked key still half-works, so it must not serve a stale "registered".
   resetDeploymentCache();
+  clearDelegateCache();
   let pair: { packageId: string; registryId: string; registryOk: boolean; registryDetail: string } | null = null;
   try {
     const resolved = await deployment();

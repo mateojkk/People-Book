@@ -59,6 +59,28 @@ section("the reserved slot is actually reserved");
   check("and it is still capped at max", out.nudges.length <= 5, String(out.nudges.length));
 }
 
+// Order independence, with more than one taboo for one person this time. The old
+// test used a single taboo so the bug could not show: collectTaboos overwrote
+// `since` on every memory without comparing dates, so the answer depended on
+// array order.
+section("a taboo reports its earliest date regardless of order");
+{
+  const early = mem({ person: "Mara", type: "taboo", text: "never bring up the divorce", occurredAt: "2026-02-01" });
+  const late = mem({ person: "Mara", type: "taboo", text: "never bring up the job", occurredAt: "2026-08-01" });
+  // Something that actually gets withheld. An elision is only reported when a
+  // redaction really happened, so without a matching memory this person is
+  // correctly absent from `elisions` and the assertion would be testing nothing.
+  const third = mem({ person: "Mara", type: "promise", text: "promised to ask about the divorce", dueAt: "2026-10-04" });
+
+  const forward = computeNudges({ memories: [early, late, third], now: NOW, max: 50 });
+  const backward = computeNudges({ memories: [late, early, third], now: NOW, max: 50 });
+  const sinceOf = (r: typeof forward) => r.elisions.find((e) => e.person === "Mara")?.since;
+
+  check("order one reports the earliest", sinceOf(forward) === "2026-02-01", String(sinceOf(forward)));
+  check("and so does the reverse", sinceOf(backward) === "2026-02-01", String(sinceOf(backward)));
+  check("so the two agree", sinceOf(forward) === sinceOf(backward));
+}
+
 // ─── Confirmed vs inferred: the central guarantee ────────────────────────────
 section("only confirmed memories can nudge");
 

@@ -140,11 +140,19 @@ export function recurringDate(text: string): string | null {
 }
 
 /** True for a complete "MM-DD". */
+/**
+ * A complete MM-DD, and a day that exists in that month.
+ *
+ * It only checked that the month was >= 1, so "99-99" and "13-45" both passed.
+ * Harmless today only because the one caller feeds it values that have already
+ * been through `recurringDate`. A validator that validates nothing is worse than
+ * no validator, because the next caller will trust it.
+ */
 export function isFullMonthDay(value: string | undefined): boolean {
   if (!value) return false;
   const m = /^(\d{2})-(\d{2})$/.exec(value);
   if (!m) return false;
-  return Number(m[1]) >= 1;
+  return validMonthDay(Number(m[1]), Number(m[2])) !== null;
 }
 
 /**
@@ -158,12 +166,16 @@ export function monthForDayOnly(dayOnly: string, now: Date): string | null {
   const day = Number(dayOnly.slice(3));
   if (!Number.isInteger(day) || day < 1 || day > 31) return null;
 
-  // If that day has not been this year, it is next year.
-  const thisYear = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), day));
-  const isFuture = thisYear.getTime() >= Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-  const year = isFuture ? now.getUTCFullYear() : now.getUTCFullYear() + 1;
-  const resolved = new Date(Date.UTC(year, now.getUTCMonth(), day));
-  if (resolved.getUTCDate() !== day) return null;
+  // The month is always the current one, and the year is discarded because MM-DD
+  // has nowhere to put one. An earlier version computed a year and a "is this in
+  // the future" flag that had no effect on the output at all, which made the
+  // function read as though it did something it does not.
+  //
+  // The rule being applied is "the coming one": a bare "the 14th" means the 14th
+  // of this month if it has not passed, otherwise next month's -- which is what
+  // the ranker recomputes each time anyway.
+  const resolved = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), day));
+  if (resolved.getUTCDate() !== day) return null; // e.g. the 31st of a short month
   return `${pad(resolved.getUTCMonth() + 1)}-${pad(day)}`;
 }
 

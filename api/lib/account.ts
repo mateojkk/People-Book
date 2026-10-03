@@ -359,11 +359,30 @@ async function accountsTableId(registryId: string): Promise<string | null> {
  * absent. Cached per process: the answer only changes when the user acts, and
  * they cause that action from the setup screen.
  */
-const delegateCache = new Map<string, boolean>();
+const delegateCache = new Map<string, { at: number; value: boolean }>();
+
+/**
+ * How long a registration answer is trusted.
+ *
+ * It was cached forever, on the reasoning that "the answer only changes when the
+ * user acts, and they cause that action from the setup screen". But the revocation
+ * demo this file is built around happens in a Sui explorer, outside this app --
+ * so the one action that matters most is the one this reasoning does not cover,
+ * and a revoked key surfaced as a raw write failure instead of a clean 403.
+ *
+ * A minute is long enough to spare the repeat lookups and short enough that a
+ * revocation is picked up on the next real interaction.
+ */
+const DELEGATE_TTL_MS = 60_000;
+
+export function clearDelegateCache(accountId?: string): void {
+  if (accountId) delegateCache.delete(accountId);
+  else delegateCache.clear();
+}
 
 export async function delegateIsRegistered(accountId: string): Promise<boolean> {
   const cached = delegateCache.get(accountId);
-  if (cached !== undefined) return cached;
+  if (cached !== undefined && Date.now() - cached.at < DELEGATE_TTL_MS) return cached.value;
 
   let registered = false;
   try {
@@ -376,13 +395,13 @@ export async function delegateIsRegistered(accountId: string): Promise<boolean> 
     registered = false;
   }
 
-  delegateCache.set(accountId, registered);
+  delegateCache.set(accountId, { at: Date.now(), value: registered });
   return registered;
 }
 
 /** Called after a successful grant, so the next status check does not say no. */
 export function markDelegateRegistered(accountId: string): void {
-  delegateCache.set(accountId, true);
+  delegateCache.set(accountId, { at: Date.now(), value: true });
 }
 
 export interface GrantResult {

@@ -92,6 +92,8 @@ export function CorrectionsPanel() {
   const load = useCallback(async () => {
     try {
       setData(await api.get<CorrectionsResponse>("/api/corrections"));
+      // Cleared on success, so one failure does not permanently replace the panel.
+      setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load your corrections.");
     }
@@ -113,7 +115,11 @@ export function CorrectionsPanel() {
     try {
       const res = await api.get<HistoryResponse>(`/api/memories/${encodeURIComponent(id)}/history`);
       setHistory((h) => ({ ...h, [id]: res.revisions }));
+      setError(null);
     } catch (e) {
+      // Scoped to the panel, but the panel is replaced wholesale by ErrorNote, so
+      // a single failed "what it changed" click destroyed the corrections list
+      // until reload -- even though the list itself had loaded fine.
       setError(e instanceof Error ? e.message : "Could not load that history.");
     }
   }, [open, history]);

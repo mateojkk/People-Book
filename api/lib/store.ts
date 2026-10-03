@@ -137,6 +137,8 @@ type Enumeration = {
   coverage: "complete" | "partial";
 };
 const enumerationCache = new Map<string, { at: number; value: Enumeration }>();
+/** Bumped on every write; see invalidate(). */
+const enumerationGeneration = new Map<string, number>();
 const enumerationsInFlight = new Map<string, Promise<Enumeration>>();
 
 export interface StoreOptions {
@@ -201,7 +203,13 @@ export class PeopleBookStore {
    * caching is not a cache, it is a way of being confidently wrong for 15 seconds.
    */
   private invalidate(): void {
-    enumerationCache.delete(`${this.accountId}:${this.namespace}`);
+    const key = `${this.accountId}:${this.namespace}`;
+    enumerationCache.delete(key);
+    // Bumping the generation means any enumeration already in flight started
+    // before this write, and must not be allowed to cache its now-stale result
+    // on completion. Deleting the entry alone does not help: the in-flight
+    // promise resolves afterwards and writes the old view straight back.
+    enumerationGeneration.set(key, (enumerationGeneration.get(key) ?? 0) + 1);
   }
 
   async remember(input: MakeMemoryInput): Promise<PersonMemory> {
@@ -240,6 +248,9 @@ export class PeopleBookStore {
   async forget(id: string): Promise<PersonMemory> {
     const current = await this.getById(id);
     if (!current) throw new MemoryNotFoundError(id);
+    // Already gone. That is the state the caller asked for, so it is success.
+    // The guard was unreachable while getById filtered tombstones, which is why
+    // forgetting twice used to throw.
     if (current.deleted === true) return current;
 
     return this.revise(current, { deleted: true });
@@ -314,10 +325,28 @@ export class PeopleBookStore {
     }
   }
 
+  /**
+   * enumerate(), but sharing the in-flight dedupe and the cache with listLive.
+   */
+  private async enumerateCached(): Promise<Enumeration> {
+    const key = `${this.accountId}:${this.namespace}`;
+    const running = enumerationsInFlight.get(key);
+    if (running) return running;
+
+    const work = this.enumerate();
+    enumerationsInFlight.set(key, work);
+    try {
+      return await work;
+    } finally {
+      enumerationsInFlight.delete(key);
+    }
+  }
+
   private async enumerate(): Promise<Enumeration> {
     const key = `${this.accountId}:${this.namespace}`;
     const cached = enumerationCache.get(key);
     if (cached && Date.now() - cached.at < ENUMERATION_TTL_MS) return cached.value;
+    const generationAtStart = enumerationGeneration.get(key) ?? 0;
 
     const blobs = new Map<string, string>();
     let failed = 0;
@@ -380,7 +409,13 @@ export class PeopleBookStore {
    * ask what it thought in March and get the March answer, not the current one.
    */
   async listHistory(id: string): Promise<PersonMemory[]> {
-    const { all } = await this.enumerate();
+    // Through listLive, not enumerate directly. enumerate is the raw worker; the
+    // dedupe and the cache live in listLive. Calling enumerate here meant a
+    // /history request ran alongside a ledger read instead of joining it -- which
+    // doubled the relayer fan-out and pushed peak concurrency past
+    // ENUMERATION_CONCURRENCY, which is the throttling the constants exist to
+    // avoid.
+    const { all } = await this.enumerateCached();
     return all
       .filter((m) => m.id === id)
       .sort((a, b) => a.rev - b.rev);
@@ -406,9 +441,27 @@ export class PeopleBookStore {
    * far worse than no result, because it could return someone else's memory
    * under the wrong id.
    */
+  /**
+   * One memory by id, INCLUDING a tombstoned one.
+   *
+   * This used to read through listLive(), which filters tombstones out. So a
+   * forgotten memory was unfindable, and `forget`'s own idempotency guard below
+   * could never fire -- forgetting twice threw MemoryNotFoundError instead of
+   * returning quietly. Double-clicking Undo, or a retried undo after a partial
+   * failure, surfaced "That memory is already gone" as an error.
+   *
+   * It also made two `deleted === true` checks elsewhere unreachable, and meant
+   * no route could ever bring a memory back.
+   *
+   * Tombstones are filtered at the edges -- listLive for reading, listCorrections
+   * and listHistory as appropriate -- not here. A lookup by exact id is how you
+   * check whether something was deleted.
+   */
   async getById(id: string): Promise<PersonMemory | null> {
-    const { memories } = await this.listLive();
-    return memories.find((m) => m.id === id) ?? null;
+    const { all } = await this.enumerate();
+    const matching = all.filter((m) => m.id === id);
+    if (!matching.length) return null;
+    return matching.reduce((a, b) => (b.rev > a.rev ? b : a));
   }
 
   /**

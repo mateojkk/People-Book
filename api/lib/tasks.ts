@@ -107,12 +107,11 @@ export function tasksFor(memories: readonly PersonMemory[], now: Date, timeZone?
 
     const stale = isStalePromise(memory, now);
     const faded = isDecayed(memory, now);
-    if (stale || faded) {
-      // Not actionable, but still worth surfacing once so it can be retired
-      // deliberately rather than lingering as a task nobody clears.
-      if (!memory.dueAt) continue;
-    }
-
+    // Stale and faded items are NOT dropped here, and once this did drop any
+    // stale item with no dueAt -- which made an undated promise disappear from
+    // /api/today entirely, contradicting both comments that said it would be
+    // surfaced "so it can be retired deliberately". They land in the inactive
+    // section below with a way to clear them.
     const daysUntil = memory.dueAt ? daysBetween(today, memory.dueAt) : Number.NaN;
     const dated = Number.isFinite(daysUntil);
     // Undated open promises still belong on the list -- you did say you would.

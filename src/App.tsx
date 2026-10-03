@@ -104,6 +104,11 @@ export default function App() {
 
   const forget = useCallback(
     async (id: string) => {
+      // Cleared on the way in, not just on success. This flag was only ever set,
+      // never reset, so a single failed delete left a permanent red banner over
+      // the conversation for the rest of the session -- including after the thing
+      // that caused it had been dealt with.
+      setError(null);
       try {
         await api.del(`/api/memories/${id}`);
         setVersion((v) => v + 1);

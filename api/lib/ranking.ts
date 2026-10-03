@@ -159,23 +159,45 @@ interface Taboo {
   terms: string[];
 }
 
+/**
+ * The taboos, one per person.
+ *
+ * `since` is the EARLIEST date any of that person's taboos was set, because a
+ * taboo you set first is the one you still mean. The old code said so and did
+ * the opposite: the condition tested `entry.since === ""`, which is never true,
+ * so it overwrote on every memory without ever comparing dates. The answer
+ * therefore depended on the order of the array.
+ *
+ * That matters more than it sounds. MemWal returns in relevance order, not write
+ * order, so the same book could report a taboo as set in February on one call and
+ * August on the next, and `sourceMemoryId` moved with it. The test for
+ * order-independence existed but only ever used one taboo per person.
+ */
 function collectTaboos(memories: PersonMemory[]): Map<string, Taboo> {
   const byPerson = new Map<string, Taboo>();
   for (const m of memories) {
     if (m.type !== "taboo" || m.confidence !== "confirmed") continue;
-    const entry: Taboo = byPerson.get(m.person) ?? {
-      person: m.person,
-      since: m.occurredAt ?? m.createdAt.slice(0, 10),
-      sourceMemoryId: m.id,
-      terms: [],
-    };
-    // Keep the EARLIEST rule: a taboo you set first is the one you still mean.
-    if (entry.since === "" || m.occurredAt === undefined) {
-      entry.since = m.occurredAt ?? m.createdAt.slice(0, 10);
+
+    const when = m.occurredAt ?? m.createdAt.slice(0, 10);
+    const entry = byPerson.get(m.person);
+
+    if (!entry) {
+      byPerson.set(m.person, { person: m.person, since: when, sourceMemoryId: m.id, terms: [] });
+    } else if (when < entry.since) {
+      // Strictly earlier, so a tie keeps the first-seen id and the result stays
+      // stable for a given array.
+      entry.since = when;
+      entry.sourceMemoryId = m.id;
     }
-    entry.terms.push(m.text.toLowerCase());
-    byPerson.set(m.person, entry);
+
+    // Outside the branch. An early `continue` here skipped the push for the FIRST
+    // taboo of each person, which silently stopped that one from being redacted --
+    // the worst possible direction for a privacy control to fail in.
+    byPerson.get(m.person)!.terms.push(m.text.toLowerCase());
   }
+
+  // Terms are a set in practice, and duplicates inflate redaction work.
+  for (const entry of byPerson.values()) entry.terms = [...new Set(entry.terms)];
   return byPerson;
 }
 
@@ -261,6 +283,8 @@ export function computeNudges(input: RankingInput): RankingResult {
   // whose evening crosses midnight, and that is exactly when a reminder is due.
   const today = todayISO(now, input.timeZone);
   const horizon = input.horizonDays ?? HORIZON_DAYS;
+  // Honoured, or a caller passing `absenceDays: 1` silently got 30.
+  const absence = input.absenceDays ?? ABSENCE_DAYS;
   const max = input.max ?? MAX_NUDGES;
   const dismissed = input.dismissed ?? new Set<string>();
 
@@ -332,7 +356,7 @@ export function computeNudges(input: RankingInput): RankingResult {
     const last = lastContact(person, all);
     if (!last) continue;
     const days = dayDelta(last, isoOf(now, input.timeZone));
-    if (!Number.isFinite(days) || days < ABSENCE_DAYS) continue;
+    if (!Number.isFinite(days) || days < absence) continue;
 
     const synthetic: PersonMemory = {
       id: `absence:${person}`,
@@ -364,7 +388,7 @@ export function computeNudges(input: RankingInput): RankingResult {
       },
       // Grows with time, but capped: missing someone for 200 days should not
       // outrank an overdue promise by much.
-      score: Math.min(0.5 + (days - ABSENCE_DAYS) / 200, 0.75),
+      score: Math.min(0.5 + (days - absence) / 200, 0.75),
     });
   }
 

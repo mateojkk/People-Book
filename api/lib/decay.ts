@@ -92,9 +92,11 @@ export function relevance(memory: PersonMemory, now: Date): number {
   // ago" case: without it, a birthday decays into the ground by December.
   if (memory.anniversary) {
     const next = nextOccurrenceOf(memory.anniversary, today);
-    const untilNext = daysBetween(today, next);
-    if (Number.isFinite(untilNext)) {
-      score = Math.max(score, untilNext >= 0 ? Math.min(1, 0.6 + 0.4 * Math.exp(-untilNext / 14)) : 0.3);
+    if (next !== null) {
+      const untilNext = daysBetween(today, next);
+      if (Number.isFinite(untilNext)) {
+        score = Math.max(score, untilNext >= 0 ? Math.min(1, 0.6 + 0.4 * Math.exp(-untilNext / 14)) : 0.3);
+      }
     }
   }
 
@@ -151,13 +153,29 @@ export function selectLive<T extends PersonMemory>(memories: readonly T[], now: 
   return memories.filter((m) => relevance(m, now) >= DECAY_FLOOR);
 }
 
-/** The next occurrence of "MM-DD" on or after `fromISO`. Mirrors the ranker. */
-function nextOccurrenceOf(anniversary: string, fromISO: string): string {
+/**
+ * The next occurrence of "MM-DD" on or after `fromISO`. Mirrors the ranker,
+ * including its answer for 29 February in a common year: the 28th, not 1 March.
+ * An earlier comment here claimed 1 March, which is what the other two
+ * implementations actually did NOT do.
+ */
+/**
+ * The next occurrence of "MM-DD" on or after `fromISO`.
+ *
+ * Returns null when the value cannot be resolved, and the caller treats that as
+ * "no signal". It used to return `fromISO`, which is indistinguishable from
+ * "the anniversary is today" -- so a malformed value scored
+ * 0.6 + 0.4 * exp(0) = 1.0, the maximum relevance, while the ranker returned
+ * null for the same input. Not reachable today only because parseMemory rejects
+ * such memories; it is a landmine for whoever loosens that check.
+ */
+function nextOccurrenceOf(anniversary: string, fromISO: string): string | null {
   const match = /^(\d{2})-(\d{2})$/.exec(anniversary);
-  if (!match) return fromISO;
+  if (!match) return null;
   const month = Number(match[1]);
   const day = Number(match[2]);
-  if (month < 1 || month > 12 || day < 1 || day > 31) return fromISO;
+  // A real day in a real month, not just two pairs of digits.
+  if (month < 1 || month > 12 || day < 1 || day > new Date(Date.UTC(2000, month, 0)).getUTCDate()) return null;
 
   const year = Number(fromISO.slice(0, 4));
   for (const candidate of [year, year + 1]) {
@@ -166,5 +184,5 @@ function nextOccurrenceOf(anniversary: string, fromISO: string): string {
     const asISO = new Date(Date.UTC(candidate, month - 1, resolved)).toISOString().slice(0, 10);
     if (asISO >= fromISO) return asISO;
   }
-  return fromISO;
+  return null;
 }
