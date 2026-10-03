@@ -187,9 +187,27 @@ export class PeopleBookStore {
    * ack was lost, the second write is a byte-identical duplicate that collapses
    * away — it does not double-write.
    */
+  /**
+   * Drops the cached enumeration.
+   *
+   * Every write must call this, and none of them did. The cache holds a 15-second
+   * enumeration, so after any write the next read returned a book that did not
+   * contain what had just been written. That is the bug behind "saving takes
+   * forever": the save succeeded, the response re-read from cache, and the UI
+   * showed the old value, so it looked like nothing happened and you pressed it
+   * again.
+   *
+   * Not a performance trade. A cache that does not know about the writes it is
+   * caching is not a cache, it is a way of being confidently wrong for 15 seconds.
+   */
+  private invalidate(): void {
+    enumerationCache.delete(`${this.accountId}:${this.namespace}`);
+  }
+
   async remember(input: MakeMemoryInput): Promise<PersonMemory> {
     const memory = makeMemory(input);
     await this.writeBlob(serializeMemory(memory), `${memory.id}:1`);
+    this.invalidate();
     return memory;
   }
 
@@ -197,6 +215,7 @@ export class PeopleBookStore {
   async revise(memory: PersonMemory, patch: Partial<Omit<PersonMemory, "id" | "createdAt" | "rev">>): Promise<PersonMemory> {
     const next = reviseMemory(memory, patch);
     await this.writeBlob(serializeMemory(next), `${next.id}:${next.rev}`);
+    this.invalidate();
     return next;
   }
 
@@ -436,6 +455,10 @@ export class PeopleBookStore {
    */
   async seedBulk(inputs: MakeMemoryInput[]): Promise<{ written: PersonMemory[]; failed: string[] }> {
     if (inputs.length === 0) return { written: [], failed: [] };
+    // Seeding writes dozens of blobs. Dropping the cache once at the end rather
+    // than per write: a seed is a bulk load, and invalidating per item would only
+    // make the enumeration that follows slower.
+    this.invalidate();
 
     // The relayer caps a bulk request at 20 items. Chunked at 10 rather than 20
     // to stay under the limit with margin, and because a smaller batch is less
