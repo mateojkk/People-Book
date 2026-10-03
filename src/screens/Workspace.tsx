@@ -56,6 +56,8 @@ function Notice({ onOpen }: { onOpen: () => void }) {
 
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { api } from "../lib/api.ts";
+import { SEEN_EVENT, badgeLabel, unreadCount } from "../lib/unread.ts";
 import { ChatView } from "../components/ChatView.tsx";
 import { NudgeView } from "../components/NudgeView.tsx";
 import { NotificationsView } from "../components/NotificationsView.tsx";
@@ -101,6 +103,30 @@ export function Workspace({
       ? "book"
       : "talk";
   const setTab = (t: Tab) => void navigate(t === "talk" ? "/app" : `/app/${t}`);
+
+  // The badge. Fetched here rather than passed down because the rail and the
+  // panel need the same number and the panel should not have to render before
+  // the rail can show it.
+  const [unread, setUnread] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    const read = async () => {
+      try {
+        const data = await api.get<{ history?: { date: string }[] }>("/api/today");
+        if (alive) setUnread(unreadCount((data.history ?? []).map((h) => h.date)));
+      } catch {
+        // No badge is better than a wrong one, and better than a rail that fails.
+        if (alive) setUnread(0);
+      }
+    };
+    void read();
+    const onSeen = () => setUnread(0);
+    window.addEventListener(SEEN_EVENT, onSeen);
+    return () => {
+      alive = false;
+      window.removeEventListener(SEEN_EVENT, onSeen);
+    };
+  }, [tab]);
   return (
     <div className="flex h-screen overflow-hidden bg-base">
       <aside
@@ -130,13 +156,24 @@ export function Workspace({
             onClick={() => setTab("notifications")}
             aria-current={tab === "notifications"}
             title={sidebarCollapsed ? "Notifications" : undefined}
-            aria-label="Notifications"
-            className={`rail-item flex w-full items-center gap-2.5 py-2 text-left text-[13px] text-quiet ${
+            aria-label={unread > 0 ? `Notifications, ${unread} unseen` : "Notifications"}
+            className={`rail-item relative flex w-full items-center gap-2.5 py-2 text-left text-[13px] text-quiet ${
               sidebarCollapsed ? "justify-center px-0" : "px-2.5"
             }`}
           >
             <Icon name="notifications" />
             {!sidebarCollapsed && <span>Notifications</span>}
+            {/* WhatsApp-shaped: a small pill pinned to the top-right of the item,
+                and never shown while the tab is already open, because the panel
+                showing them IS the read receipt. */}
+            {unread > 0 && tab !== "notifications" && (
+              <span
+                aria-hidden="true"
+                className="mono pointer-events-none absolute -top-0.5 right-1 min-w-[17px] rounded-full bg-badge px-1 text-center text-[10px] leading-[17px] font-bold text-white tabular"
+              >
+                {badgeLabel(unread)}
+              </span>
+            )}
           </button>
           <button
             onClick={() => setTab("book")}

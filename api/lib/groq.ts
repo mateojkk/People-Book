@@ -25,8 +25,26 @@
 
 const BASE = "https://api.groq.com/openai/v1/chat/completions";
 
-/** How many times to try before giving up. */
-const MAX_ATTEMPTS = 4;
+/**
+ * How many times to try before giving up.
+ *
+ * Three, not four, and bounded by the deadline below. Four attempts with the
+ * backoff below added up to 35 seconds inside a single chat turn -- a user
+ * watching a typing indicator for half a minute and then getting "I'm listening."
+ * Retrying less and admitting failure sooner is worth far more than the last
+ * attempt.
+ */
+const MAX_ATTEMPTS = 3;
+
+/**
+ * Hard ceiling on the time one call may spend retrying, in ms.
+ *
+ * The backoff schedule alone permits ~20s of sleeping. Whatever the retry logic
+ * intends, a chat turn must not exceed this -- past about six seconds the user
+ * has concluded the page is broken, and one more attempt will not change their
+ * mind.
+ */
+const RETRY_BUDGET_MS = 6_000;
 
 /** First backoff. Doubles. */
 const BASE_BACKOFF_MS = 400;
@@ -53,6 +71,20 @@ function isTransient(status: number): boolean {
 
 export interface GroqOptions {
   temperature?: number;
+  /**
+   * Which model to use, by role.
+   *
+   * Extraction and reply are not the same job. Extraction is narrow, structured
+   * and consequential -- a missed memory or a wrong attribution is a real loss --
+   * so it stays on the strongest model. The reply is two or three sentences of
+   * conversation grounded in facts the extraction already committed to, and it
+   * was the bulk of the wait: measured at 612ms for qwen3.8-27b against ~1s for
+   * gpt-oss-20b, on the same account and the same rate limit.
+   *
+   * Per-role rather than one global GROQ_MODEL so the choice is explicit and can
+   * be overridden in either direction from the environment.
+   */
+  role?: "extract" | "reply";
   maxTokens?: number;
   stream?: boolean;
   /** Function schema. Extraction uses it; the reply model does not. */
@@ -77,7 +109,10 @@ export async function groqFetch(
   options: GroqOptions = {},
 ): Promise<Response> {
   const body = JSON.stringify({
-    model: process.env.GROQ_MODEL || "openai/gpt-oss-120b",
+    model:
+      options.role === "reply"
+        ? process.env.GROQ_MODEL_REPLY || process.env.GROQ_MODEL || "openai/gpt-oss-120b"
+        : process.env.GROQ_MODEL || "openai/gpt-oss-120b",
     temperature: options.temperature ?? 0,
     ...(options.maxTokens ? { max_tokens: options.maxTokens } : {}),
     messages,
@@ -88,6 +123,7 @@ export async function groqFetch(
   });
 
   let lastDetail = "";
+  const startedAt = Date.now();
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const response = await fetch(BASE, {
@@ -104,7 +140,8 @@ export async function groqFetch(
     const detail = await response.text().catch(() => "");
     lastDetail = detail;
 
-    if (!isTransient(response.status) || attempt === MAX_ATTEMPTS) {
+    const outOfTime = Date.now() - startedAt >= RETRY_BUDGET_MS;
+    if (!isTransient(response.status) || attempt === MAX_ATTEMPTS || outOfTime) {
       throw new Error(
         `Groq responded ${response.status}${options.label ? ` (${options.label})` : ""}${detail ? `: ${detail.slice(0, 300)}` : ""}`,
       );

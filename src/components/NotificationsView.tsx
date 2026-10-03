@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api";
+import { markSeen } from "../lib/unread";
 
 /**
  * Notifications.
@@ -51,6 +52,13 @@ export function NotificationsView() {
     } catch (error) {
       setFailed(await detail(error));
     }
+  }, []);
+
+  useEffect(() => {
+    // Opening it is the read receipt, and it is on open rather than on scroll or
+    // on reaching the end: WhatsApp clears on open, and anything cleverer is how
+    // you end up with a badge nobody can get rid of.
+    markSeen();
   }, []);
 
   useEffect(() => {

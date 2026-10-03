@@ -432,6 +432,45 @@ section("the reply arrives as it is written, not all at once");
   check("a non-streaming turn still produces a reply", turn.reply.trim().length > 0, turn.reply);
 }
 
+// ─── Nothing to answer from ────────────────────────────────────────────────────
+//
+// The regression that mattered most. "hey man" against an empty book came back
+// with "a reminder your project defence is coming up on October 13th" -- a
+// deadline the user never mentioned, framed as something the app remembered. It
+// is the single worst failure this product can have, because the entire pitch is
+// that answers come from your history. There was no history. It invented some.
+{
+  const s = stubStore([]);
+  for (const message of ["hey man", "hi", "hello there", "good morning"]) {
+    const turn = await takeTurn({ store: s.store, message });
+    const reply = turn.reply;
+    check(`"${message}" gets a reply`, reply.trim().length > 0, reply);
+    // A specific date is the tell. Invented specificity is what makes a
+    // hallucination believable, so that is what gets asserted against.
+    check(
+      `"${message}" invents no date`,
+      !/\b(january|february|march|april|may|june|july|august|september|october|november|december|\d{1,2}(st|nd|rd|th)?\s+of|\b(today|tomorrow|next week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b)/i.test(reply),
+      reply,
+    );
+    check(
+      `"${message}" claims to remember something`,
+      !/(remember|remind|noted|keep in mind|as we discussed|you (told|mentioned|said))/i.test(reply),
+      reply,
+    );
+    // The giveaway in the real failure was the word "reminder". Anything that
+    // positions the reply as a prompt about the user's own life is the failure.
+    check(`"${message}" does not claim a pending obligation`, !/remind|deadline|due|project|defence|defense/i.test(reply), reply);
+  }
+}
+
+// And the mirror case: with a book, it must still talk, because the guard is
+// about having nothing to say, not about refusing to speak.
+{
+  const s = stubStore([makeMemory({ person: "Maya", type: "trait", text: "Maya works nights at the clinic" })]);
+  const turn = await takeTurn({ store: s.store, message: "hey man" });
+  check("with a book it still answers", turn.reply.trim().length > 0, turn.reply);
+}
+
 process.stdout.write("\n");
 if (failures > 0) {
   process.stdout.write(`${failures} of ${checks} checks FAILED\n`);

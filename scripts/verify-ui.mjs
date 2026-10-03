@@ -478,12 +478,19 @@ await page.getByRole("button", { name: /Collapse sidebar/i }).click();
 await page.waitForTimeout(300);
 const folded = await page.evaluate(() => {
   const el = document.querySelector("aside");
-  return { w: el?.getBoundingClientRect().width ?? 0, scrollW: el?.scrollWidth ?? 0, text: (el?.innerText ?? "").trim() };
+  // The unread badge is excluded deliberately. It is not a clipped label, it is
+  // an intentional number, and WhatsApp keeps the count visible on the collapsed
+  // icon too -- a badge you cannot see when the rail is folded is not a badge.
+  const labels = [...(el?.querySelectorAll("button span:not([aria-hidden])") ?? [])]
+    .filter((n) => !n.hasAttribute("aria-hidden") && !n.className.includes("bg-badge"))
+    .map((n) => (n.textContent ?? "").trim())
+    .filter(Boolean);
+  return { w: el?.getBoundingClientRect().width ?? 0, scrollW: el?.scrollWidth ?? 0, labels: labels.join("|") };
 });
 // It was 56px wide holding 108px of content, so every label rendered clipped
 // mid-word: "alk to it", "otifications", "he book".
 check("collapsed rail has no overflow", folded.scrollW <= folded.w + 1, `${folded.scrollW}px of content in ${folded.w}px`);
-check("and shows icons only", folded.text === "", JSON.stringify(folded.text));
+check("and no label survives to be clipped", folded.labels === "", JSON.stringify(folded.labels));
 check("with accessible names still on every one", await page.getByRole("button", { name: "Notifications" }).count() > 0);
 await page.getByRole("button", { name: /Expand sidebar/i }).click();
 await page.waitForTimeout(300);
@@ -514,7 +521,7 @@ check("there is no manual add form", !/Write one in|Add by hand/i.test(shell));
 check("the book is reachable from the conversation", /the book/i.test(shell));
 
 // It is reached through the notice.
-await page.getByRole("button", { name: /^Notifications$/ }).click();
+await page.getByRole("button", { name: /^Notifications(, \d+ unseen)?$/ }).click();
 await page.waitForTimeout(600);
 const today = await page.evaluate(() => document.body.innerText);
 check("the screen is headed Notifications", /Notifications/.test(today));

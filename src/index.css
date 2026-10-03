@@ -44,6 +44,10 @@
 
   --color-warn: #dfae61;
   --color-stop: #e68a81;
+  /* Unread badge. More saturated than --color-stop on purpose: --stop is a
+     sentence in a sentence, and this is the one thing on screen that is meant to
+     be looked at from across a room. */
+  --color-badge: #e5484d;
 
   /* ── Mono, everywhere ─────────────────────────────────────────────────────
      One typeface for prose, labels, numbers and code. Not a novelty: the whole

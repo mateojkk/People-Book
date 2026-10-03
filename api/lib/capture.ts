@@ -296,6 +296,7 @@ async function extractRaw(
     {
       temperature: 0,
       label: "capture",
+      role: "extract",
       tools: [
         {
           type: "function",

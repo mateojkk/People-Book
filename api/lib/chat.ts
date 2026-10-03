@@ -334,7 +334,7 @@ async function composeReply(args: {
           ].filter(Boolean).join("\n"),
         },
       ],
-      { temperature: 0.4, stream: Boolean(args.onDelta), label: "reply" },
+      { temperature: 0.4, stream: Boolean(args.onDelta), label: "reply", role: "reply" },
     );
 
     // Stream when we can. A non-stream body is still read fine, so a proxy that
@@ -347,8 +347,15 @@ async function composeReply(args: {
     const body = (await response.json()) as { choices?: { message?: { content?: string } }[] };
     const text = body.choices?.[0]?.message?.content?.trim();
     return text || fallbackReply(args);
-  } catch {
-    return fallbackReply(args);
+  } catch (error) {
+    // This used to return fallbackReply, which returns "I'm listening." when
+    // there is nothing to acknowledge. So a failed reply produced a 35-second
+    // wait followed by a non-answer -- the worst of both, and silent about it.
+    // Rate limits are temporary and the user needs to know that is what happened.
+    const limited = /429|Rate limit|rate limit/.test(String((error as Error)?.message ?? ""));
+    return limited
+      ? "I'm being rate limited right now, so I can't answer that yet — say it again in a moment and it'll be in your book either way."
+      : fallbackReply(args);
   }
 }
 
@@ -506,6 +513,34 @@ ${lines.join("\n")}`;
  * Degrades to something true rather than nothing: the volunteer lines are
  * already deterministic, so the nudge still lands even with no model at all.
  */
+/**
+ * The reply when the book is empty and this message added nothing.
+ *
+ * Acknowledges what was said without claiming to know anything, and points at the
+ * one thing that would change it. A generic "I'm listening" reads as a chatbot
+ * that has not been given the memo; naming the actual next step makes the first
+ * message do work.
+ *
+ * Purely derived from the message and whether anything was captured. There is no
+ * path here that can state a fact, because there are no facts to state.
+ */
+function emptyBookReply(message: string): string {
+  const trimmed = message.trim();
+  if (!trimmed) return "Say something and I'll hold on to it.";
+
+  // A greeting is a greeting. Matching the register is not the same as claiming
+  // anything, and answering "hey" with a paragraph is its own kind of wrong.
+  if (/^(hey|hi|hello|yo|sup|howdy|heya|good (morning|evening|afternoon))/i.test(trimmed)) {
+    return "Hey. Tell me about someone — who they are to you, what's going on with them. I'll keep it.";
+  }
+
+  if (/\?$/.test(trimmed)) {
+    return "I don't know anything about that yet — there's nothing in your book about it. Tell me and I will.";
+  }
+
+  return "Noted, though there was nothing in it worth keeping. Tell me about someone and I'll hold on to the details.";
+}
+
 function fallbackReply(args: {
   message: string;
   saved: readonly SavedMemory[];
