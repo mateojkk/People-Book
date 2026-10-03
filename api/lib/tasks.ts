@@ -224,9 +224,15 @@ export function noticeHistory(
   const out: { date: string; notice: string }[] = [];
   for (let back = 0; back < days; back += 1) {
     const then = new Date(now.getTime() - back * DAY_MS);
-    const dayTasks = tasksFor(memories, then);
-    const notice = composeNotice(memories, dayTasks, then);
-    if (notice) out.push({ date: then.toISOString().slice(0, 10), notice });
+    // The zone has to be forwarded, and the row labelled with it.
+    //
+    // It was accepted as a parameter and then dropped on both calls, so /api/today
+    // computed today's `notice` in the user's zone and today's `history[0]` in UTC.
+    // One request, one day, two different answers -- and the row was filed under
+    // the UTC date, which is the wrong day for anyone offset from Greenwich.
+    const dayTasks = tasksFor(memories, then, timeZone);
+    const notice = composeNotice(memories, dayTasks, then, timeZone);
+    if (notice) out.push({ date: todayISO(then, timeZone), notice });
   }
   return out;
 }

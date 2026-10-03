@@ -898,7 +898,7 @@ async function readProfile(store: PeopleBookStore): Promise<Partial<Record<Profi
   for (const slot of PROFILE_SLOTS) {
     const memory = await store.getById(profileId(slot));
     if (memory && memory.deleted !== true) {
-      const value = /^(.*)\\.$/.exec(memory.text)?.[1];
+      const value = /^(.*)\.$/.exec(memory.text)?.[1];
       if (value) out[slot] = value;
     }
   }

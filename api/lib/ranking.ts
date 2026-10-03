@@ -490,12 +490,21 @@ function selectForDisplay(sorted: Nudge[], max: number): Nudge[] {
     chosen.push(nudge);
   }
 
-  if (followThrough) chosen.push(followThrough);
-
-  // Re-sort for display so urgency still orders the final list.
-  const order = new Map(sorted.map((n) => [n.id, sorted.indexOf(n)]));
-  chosen.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
-  return chosen.slice(0, max);
+  // The reserved slot has to actually be reserved.
+  //
+  // It used to be pushed onto `chosen`, then the whole list was sorted and
+  // truncated. Follow-through scores 0.42, the lowest of all five kinds, so
+  // after the sort it sat last and `slice(0, max)` deleted it -- which is the
+  // exact regression the function's own comment says it exists to prevent. Any
+  // book with dates AND promises AND an absence triggers it; the test missed it
+  // because the fixture only had two kinds, so `chosen` never reached `max`.
+  //
+  // Truncating to max-1 and appending afterwards is the only thing that reserves
+  // anything. Reserving it and then sorting it back into last position would
+  // reintroduce the same bug.
+  const room = followThrough ? Math.max(0, max - 1) : max;
+  const kept = chosen.slice(0, room);
+  return followThrough ? [...kept, followThrough] : kept;
 }
 
 /**

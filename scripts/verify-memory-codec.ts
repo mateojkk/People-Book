@@ -240,6 +240,43 @@ section("the extraction schema cannot drift from the memory model");
   check("nothing is empty", MEMORY_TYPES.every((t) => typeof t === "string" && t.length > 0));
 }
 
+section("a memory that cannot be read is never written");
+// ── The silent-loss pair ──────────────────────────────────────────────────────
+//
+// parseMemory has always refused a memory whose dates it cannot verify. But
+// nothing stopped one being *created*: the endpoint passed the request body's dates
+// straight through, makeMemory stored them, the caller got a 201 and a blob id --
+// and the memory was then invisible to the ledger, the nudges, the tasks and the
+// export, permanently, while blobCount still counted it.
+//
+// A write that reports success and cannot be read back is the worst outcome this
+// store has, and it was reachable by a hand-typed "next friday".
+{
+  const refused = (input: Record<string, unknown>, why: string) => {
+    let threw = false;
+    try {
+      makeMemory({ person: "Maya", type: "promise", text: "promised to ring", ...input } as never);
+    } catch {
+      threw = true;
+    }
+    check(why, threw);
+  };
+  refused({ dueAt: "next friday" }, "a dueAt that is not a date is refused at creation");
+  refused({ dueAt: "2026-13-45" }, "a dueAt with an impossible month is refused");
+  refused({ occurredAt: "tomorrow" }, "an occurredAt that is not a date is refused");
+  refused({ anniversary: "13-45" }, "an anniversary with a day that does not exist is refused");
+  refused({ anniversary: "02-30" }, "an anniversary for 30 February is refused");
+
+  // And the good ones still go through, or the fix is just a wall.
+  const ok = makeMemory({
+    person: "Mara", type: "trait", text: "birthday is the 14th",
+    occurredAt: "2026-03-01", anniversary: "11-14",
+  });
+  check("valid dates still store and read back", parseMemory(serializeMemory(ok))?.anniversary === "11-14");
+  const leap = makeMemory({ person: "Dev", type: "trait", text: "wedding", anniversary: "02-29" });
+  check("a real leap day is still allowed", parseMemory(serializeMemory(leap))?.anniversary === "02-29");
+}
+
 // ─── Result ─────────────────────────────────────────────────────────────────
 console.log("");
 if (failures > 0) {

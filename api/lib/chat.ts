@@ -87,6 +87,8 @@ export interface ChatTurn {
   cited: { id: string; person: string; text: string }[];
   /** Nudges volunteered unprompted this turn. */
   volunteered: Nudge[];
+  /** Repeated claims, when the turn was the question that computes them. */
+  patterns?: Pattern[];
   /**
    * Set when extraction failed. Reported rather than hidden: the user needs to
    * know something they said was not remembered, and why.
@@ -214,6 +216,25 @@ export async function takeTurn(
   const volunteered = due.slice(0, 2);
 
   // ── 3. Answer ───────────────────────────────────────────────────────────────
+  // ── "What do I keep saying?" is answered here and never reaches the model ────
+  //
+  // This was written and then reported as wired in, and it was not wired in at
+  // all: the three functions existed and nothing called them. The offline suite did
+  // not catch it because verify-chat imports `asksForPatterns` directly, so every
+  // test passed while the feature was dead in the product.
+  //
+  // The reason it must not reach the model is unchanged. The answer is a shape
+  // across many memories and exists in no single one of them, so a model given the
+  // ledger will infer one from whatever it reads and sound entirely certain. The
+  // user has no way to distinguish that from a real finding, which is the one
+  // thing this product exists to make impossible.
+  const patterns = computePatterns(after);
+  if (asksForPatterns(message)) {
+    const answer = patternAnswer(patterns);
+    if (hooks.onDelta) hooks.onDelta(answer);
+    return { reply: answer, cited: [], volunteered, saved, patterns };
+  }
+
   const cited = pickCitations(after, threadSubjects, volunteered);
   const reply = await composeReply({ message, history, memories: after, volunteered, cited, saved, onDelta: hooks.onDelta });
 
@@ -305,9 +326,9 @@ async function composeReply(args: {
   // Profile facts are ids the store minted, so they arrive with the ledger rather
   // than needing a second read.
   const profile = {
-    name: args.memories.find((m) => m.id === "profile_name")?.text.replace(/^Prefers to be called |\\.$/g, ""),
-    pronouns: args.memories.find((m) => m.id === "profile_pronouns")?.text.replace(/^Uses | pronouns\\.$/g, ""),
-    timezone: args.memories.find((m) => m.id === "profile_timezone")?.text.replace(/^Is in the | timezone\\.$/g, ""),
+    name: args.memories.find((m) => m.id === "profile_name")?.text.replace(/^Prefers to be called |\.$/g, ""),
+    pronouns: args.memories.find((m) => m.id === "profile_pronouns")?.text.replace(/^Uses | pronouns\.$/g, ""),
+    timezone: args.memories.find((m) => m.id === "profile_timezone")?.text.replace(/^Is in the | timezone\.$/g, ""),
   };
   const ledger = args.memories
     .filter((m) => m.type !== "correction" && !m.id.startsWith("profile_"))

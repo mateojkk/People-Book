@@ -36,6 +36,29 @@ function mem(over: Partial<PersonMemory> & Pick<PersonMemory, "person" | "type" 
   });
 }
 
+// The reserved follow-through slot. The existing test used a fixture with only
+// two kinds, so `chosen` never reached `max` and the bug stayed invisible.
+section("the reserved slot is actually reserved");
+{
+  const many = [
+    // Two open promises to one person, which is what makes a follow-through
+    // candidate exist at all. One each produces none, which is why an earlier
+    // version of this test could not see the bug it was written for.
+    mem({ person: "Maya", type: "promise", text: "promised to ring about the invoice", dueAt: "2026-09-01" }),
+    mem({ person: "Maya", type: "promise", text: "promised to send the photos", dueAt: "2026-09-04" }),
+    mem({ person: "Dev", type: "promise", text: "promised to send the contract", dueAt: "2026-09-02" }),
+    mem({ person: "Ana", type: "promise", text: "promised to call back", dueAt: "2026-09-03" }),
+    mem({ person: "Mara", type: "event", text: "wedding", anniversary: "06-02" }),
+    // Old and unresolved, which is what absence is derived from.
+    mem({ person: "Sol", type: "promise", text: "promised to reply", occurredAt: "2026-01-05" }),
+  ];
+  const out = computeNudges({ memories: many, now: new Date("2026-06-01T12:00:00Z"), max: 5 });
+  check("a five-kind book still surfaces the follow-through nudge",
+    out.nudges.some((n) => n.kind === "followthrough"),
+    out.nudges.map((n) => n.kind).join(","));
+  check("and it is still capped at max", out.nudges.length <= 5, String(out.nudges.length));
+}
+
 // ─── Confirmed vs inferred: the central guarantee ────────────────────────────
 section("only confirmed memories can nudge");
 

@@ -168,6 +168,31 @@ export function makeMemory(input: MakeMemoryInput): PersonMemory {
     throw new Error("A memory needs a claim. Refusing to store an empty one.");
   }
 
+  // ── Dates are validated HERE, not only on read ──────────────────────────────
+  //
+  // parseMemory refuses a memory whose dates it cannot verify, which is right. But
+  // until now that meant a bad date could still be written: the endpoint took
+  // whatever the request body said, makeMemory stored it, the caller got a 201 and
+  // a blob id, and the memory was then invisible to the ledger, the nudges, the
+  // tasks and the export -- permanently, while blobCount still counted it.
+  //
+  // A write that reports success and cannot be read back is the worst outcome
+  // this store has, and it was reachable by a hand-typed "next friday".
+  //
+  // Validating at creation means the value is checked once, by the same code that
+  // will later read it, and a bad date is refused before it can become a
+  // permanently orphaned blob.
+  for (const [key, value] of [["occurredAt", input.occurredAt], ["dueAt", input.dueAt]] as const) {
+    if (value !== undefined && !(typeof value === "string" && isRealISODate(value))) {
+      throw new Error(`A memory's ${key} must be an ISO date (YYYY-MM-DD). Refusing to store "${value}".`);
+    }
+  }
+  if (input.anniversary !== undefined && !isAnniversaryOrUndefined(input.anniversary)) {
+    throw new Error(
+      `A memory's anniversary must be a real MM-DD day. Refusing to store "${input.anniversary}".`,
+    );
+  }
+
   return {
     id: input.id ?? makeMemoryId(now),
     rev: 1,
@@ -296,6 +321,27 @@ function isStatus(value: unknown): value is MemoryStatus {
 
 function isISOOrUndefined(value: unknown): boolean {
   return value === undefined || (typeof value === "string" && ISO_DATE.test(value));
+}
+
+/**
+ * Whether a string is a date that actually exists.
+ *
+ * `ISO_DATE` only checks the shape, so "2026-13-45" satisfies it -- and a memory
+ * carrying that is perfectly readable while being unable to ever come due. A
+ * silently-dead task is worse than a rejected one.
+ *
+ * Deliberately used on the WRITE path only. Tightening the read side as well
+ * would turn every already-stored impossible date into an unreadable blob, which
+ * is the silent-loss failure this whole check exists to prevent. Refusing new ones
+ * costs nothing and orphans nothing.
+ */
+function isRealISODate(value: string): boolean {
+  if (!ISO_DATE.test(value)) return false;
+  const [y, m, d] = value.split("-").map(Number) as [number, number, number];
+  if (m < 1 || m > 12 || d < 1) return false;
+  // Day 0 of the next month is the last day of this one, which handles February
+  // in a leap year without a special case.
+  return d <= new Date(Date.UTC(y, m, 0)).getUTCDate();
 }
 
 /**
