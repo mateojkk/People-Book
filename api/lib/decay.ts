@@ -1,3 +1,4 @@
+import { todayISO } from "../../shared/memory-codec.ts";
 /**
  * Decay.
  *
@@ -48,9 +49,7 @@ function daysBetween(fromISO: string, toISO: string): number {
   return Math.round((to - from) / DAY_MS);
 }
 
-function todayISO(now: Date): string {
-  return now.toISOString().slice(0, 10);
-}
+
 
 /**
  * How much this memory deserves attention right now, 0..1.

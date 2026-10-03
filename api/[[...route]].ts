@@ -498,16 +498,20 @@ app.get("/api/today", async (c) => {
   try {
     const { memories, coverage } = await resolved.store.listLive();
     const now = new Date();
-    const tasks = tasksFor(memories, now);
+    // The user's own zone, so "today" is today where they are rather than in UTC.
+    // Read on every call rather than cached: it changes when they change it, and
+    // a stale zone would put a birthday on the wrong day.
+    const timeZone = await userTimeZone(resolved.store);
+    const tasks = tasksFor(memories, now, timeZone);
     const dueToday = tasks.filter((t) => t.active && (t.urgency === "overdue" || t.urgency === "today"));
     return c.json({
       tasks,
       // A sentence, not a count. "2 things need you today" is a task list with a
       // bell on it; the sentence is this app being useful in its own voice.
-      notice: composeNotice(memories, tasks, now),
+      notice: composeNotice(memories, tasks, now, timeZone),
       // What it could have said for the last week. Recomputed, not recorded --
       // see noticeHistory for why, and for what that costs in honesty.
-      history: noticeHistory(memories, tasks, now),
+      history: noticeHistory(memories, tasks, now, timeZone),
       dueCount: dueToday.length,
       staleCount: tasks.filter((t) => !t.active).length,
       coverage,
@@ -577,7 +581,13 @@ app.get("/api/nudges", async (c) => {
 
   try {
     const { memories } = memoryDisabled ? { memories: [] as PersonMemory[] } : await resolved.store.listLive();
-    const ranked = computeNudges({ memories, memoryDisabled, dismissed: dismissals, now: new Date() });
+    const ranked = computeNudges({
+      memories,
+      memoryDisabled,
+      dismissed: dismissals,
+      now: new Date(),
+      timeZone: await userTimeZone(resolved.store),
+    });
 
     // No model call to reword these. Every nudge already has a deterministic
     // sentence, and the one that was here cost a full extra round trip -- about a
@@ -831,6 +841,112 @@ app.post("/api/memories/:id/resolve", async (c) => {
     if (!current) return c.json({ error: "not_found", message: "No such memory." }, 404);
     const next = await resolved.store.revise(current, { status });
     return c.json({ memory: next });
+  } catch (error) {
+    return toErrorResponse(c, error);
+  }
+});
+
+/** The user's own timezone, if they set one. Used for every "today". */
+async function userTimeZone(store: PeopleBookStore): Promise<string | undefined> {
+  const memory = await store.getById("profile_timezone");
+  if (!memory || memory.deleted === true) return undefined;
+  return /^Is in the (.+) timezone\.$/.exec(memory.text)?.[1];
+}
+
+/**
+ * The profile: what the assistant calls you, and a few standing facts.
+ *
+ * ── Why these are memories and not a settings table ───────────────────────────
+ * Because they belong in the same place as everything else you told it. If your
+ * name lives in a Postgres row and the rest of what the assistant knows lives in
+ * your Walrus account, then exporting your book does not export you, and revoking
+ * the key does not revoke the bit that knows your name. Both facts would be
+ * trivially small and both would be worth having.
+ *
+ * So a profile field is a memory about "you", written deliberately rather than
+ * extracted. Deliberately matters: everything else in the book arrives through
+ * the model, which is right for facts you mentioned in passing and wrong for
+ * something you typed into a form and expect to be obeyed.
+ *
+ * Writes are upserts against the previous value rather than appends. A profile
+ * you change five times should not leave five claims about your name in the book
+ * for the assistant to choose between -- and because every write is a revision of
+ * the same id, the history still shows what it used to call you.
+ */
+const PROFILE_SLOTS = ["name", "pronouns", "timezone"] as const;
+type ProfileSlot = (typeof PROFILE_SLOTS)[number];
+
+/** Stable id per slot, so a rewrite revises rather than forks. */
+const profileId = (slot: ProfileSlot) => `profile_${slot}`;
+
+const profileClaim: Record<ProfileSlot, (value: string) => string> = {
+  name: (v) => `Prefers to be called ${v}.`,
+  pronouns: (v) => `Uses ${v} pronouns.`,
+  timezone: (v) => `Is in the ${v} timezone.`,
+};
+
+/**
+ * Reads the profile out of the book.
+ *
+ * By id rather than by scanning for wording. Scanning means the profile breaks
+ * the moment someone says "call me Mateo" in conversation and the extractor
+ * writes it as a plain trait -- which it will, because that is a legitimate thing
+ * to say.
+ */
+async function readProfile(store: PeopleBookStore): Promise<Partial<Record<ProfileSlot, string>>> {
+  const out: Partial<Record<ProfileSlot, string>> = {};
+  for (const slot of PROFILE_SLOTS) {
+    const memory = await store.getById(profileId(slot));
+    if (memory && memory.deleted !== true) {
+      const value = /^(.*)\\.$/.exec(memory.text)?.[1];
+      if (value) out[slot] = value;
+    }
+  }
+  return out;
+}
+
+app.get("/api/profile", async (c) => {
+  const resolved = await resolveStore(c);
+  if ("error" in resolved) return resolved.error;
+  try {
+    return c.json({ profile: await readProfile(resolved.store) });
+  } catch (error) {
+    return toErrorResponse(c, error);
+  }
+});
+
+app.post("/api/profile", async (c) => {
+  const resolved = await resolveStore(c);
+  if ("error" in resolved) return resolved.error;
+  const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+  try {
+    for (const slot of PROFILE_SLOTS) {
+      if (!(slot in body)) continue;
+      const raw = typeof body[slot] === "string" ? body[slot].trim() : "";
+      const existing = await resolved.store.getById(profileId(slot));
+
+      // Empty clears it. A tombstone rather than a delete, like everything else,
+      // so clearing your name is itself part of the record.
+      if (!raw) {
+        if (existing) await resolved.store.forget(existing.id);
+        continue;
+      }
+      const claim = profileClaim[slot](raw);
+      if (existing) await resolved.store.revise(existing, { text: claim, status: "active" });
+      else {
+        await resolved.store.remember({
+          id: profileId(slot),
+          person: "you",
+          type: "trait",
+          text: claim,
+          status: "active",
+          // Typed by the user, not guessed. Confirmed, or it could never inform
+          // a reply.
+          confidence: "confirmed",
+        });
+      }
+    }
+    return c.json({ profile: await readProfile(resolved.store) });
   } catch (error) {
     return toErrorResponse(c, error);
   }

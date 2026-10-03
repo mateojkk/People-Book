@@ -26,6 +26,7 @@ import type {
   PersonMemory,
 } from "../../shared/types.ts";
 import { SELF } from "../../shared/types.ts";
+import { todayISO } from "../../shared/memory-codec.ts";
 
 /** How far ahead a date is worth mentioning. Two weeks is short enough to act on. */
 export const HORIZON_DAYS = 14;
@@ -48,6 +49,8 @@ export interface RankingInput {
   memoryDisabled?: boolean;
   /** Ids the user has dismissed. Dismissal is a signal, not a delete. */
   dismissed?: ReadonlySet<string>;
+  /** IANA zone from the profile. Makes "today" mean today for the user. */
+  timeZone?: string;
 }
 
 export interface RankingResult {
@@ -78,8 +81,17 @@ function dayDelta(fromISO: string, toISO: string): number {
   return Math.round((to - from) / DAY_MS);
 }
 
-function isoOf(date: Date): string {
-  return date.toISOString().slice(0, 10);
+/**
+ * The date a moment falls on, in the user's zone when we know it.
+ *
+ * Was `toISOString().slice(0, 10)`, which is UTC. At 11pm in London that is
+ * already tomorrow, so nudges for the next morning could be suppressed and
+ * overdue promises could be counted a day early. The zone comes from the
+ * profile; without one this is UTC, which is the honest answer when we do not
+ * know where the user is.
+ */
+function isoOf(date: Date, timeZone?: string): string {
+  return todayISO(date, timeZone);
 }
 
 /**
@@ -245,6 +257,9 @@ function lower(s: string): string {
 
 export function computeNudges(input: RankingInput): RankingResult {
   const now = input.now ?? new Date();
+  // The user's zone, when known. See todayISO -- UTC is a day wrong for anyone
+  // whose evening crosses midnight, and that is exactly when a reminder is due.
+  const today = todayISO(now, input.timeZone);
   const horizon = input.horizonDays ?? HORIZON_DAYS;
   const max = input.max ?? MAX_NUDGES;
   const dismissed = input.dismissed ?? new Set<string>();
@@ -287,7 +302,7 @@ export function computeNudges(input: RankingInput): RankingResult {
     const due = effectiveDueAt(m, now);
     if (!due) continue;
 
-    const days = dayDelta(isoOf(now), due);
+    const days = dayDelta(isoOf(now, input.timeZone), due);
     if (!Number.isFinite(days) || days < 0 || days > horizon) continue;
 
     // Closer dates rank higher, but never perfectly: a date in 14 days should
@@ -304,7 +319,7 @@ export function computeNudges(input: RankingInput): RankingResult {
   for (const m of eligible) {
     if (m.type !== "promise" || m.status !== "open") continue;
 
-    const days = m.dueAt ? dayDelta(isoOf(now), m.dueAt) : null;
+    const days = m.dueAt ? dayDelta(isoOf(now, input.timeZone), m.dueAt) : null;
     // Undated open promises still surface, but weakly: you did say you'd do it.
     const score = days === null ? 0.5 : days < 0 ? 1 : 0.6 + 0.2 * (1 - Math.min(days, horizon) / horizon);
     pushNudge(candidates, build("promise", m, days, undefined, taboos, withheld, now), score);
@@ -316,7 +331,7 @@ export function computeNudges(input: RankingInput): RankingResult {
   for (const person of people) {
     const last = lastContact(person, all);
     if (!last) continue;
-    const days = dayDelta(last, isoOf(now));
+    const days = dayDelta(last, isoOf(now, input.timeZone));
     if (!Number.isFinite(days) || days < ABSENCE_DAYS) continue;
 
     const synthetic: PersonMemory = {

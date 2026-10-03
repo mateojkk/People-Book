@@ -302,12 +302,23 @@ async function composeReply(args: {
   // stated as binding, with the user's own reason attached -- the reason is what
   // makes the rule recognisable when it comes back in a different costume.
   const corrections = args.memories.filter((m) => m.type === "correction");
+  // Profile facts are ids the store minted, so they arrive with the ledger rather
+  // than needing a second read.
+  const profile = {
+    name: args.memories.find((m) => m.id === "profile_name")?.text.replace(/^Prefers to be called |\\.$/g, ""),
+    pronouns: args.memories.find((m) => m.id === "profile_pronouns")?.text.replace(/^Uses | pronouns\\.$/g, ""),
+    timezone: args.memories.find((m) => m.id === "profile_timezone")?.text.replace(/^Is in the | timezone\\.$/g, ""),
+  };
   const ledger = args.memories
-    .filter((m) => m.type !== "correction")
+    .filter((m) => m.type !== "correction" && !m.id.startsWith("profile_"))
     .slice(0, 40)
     .map((m) => `- ${m.person} | ${m.type} | ${m.text}`)
     .join("\n");
-  const standing = formatCorrections(corrections);
+  const standing = formatCorrections(corrections) + formatProfile({
+    name: profile.name || undefined,
+    pronouns: profile.pronouns || undefined,
+    timezone: profile.timezone || undefined,
+  });
 
   try {
     const response = await groqFetch(
@@ -487,6 +498,31 @@ export function asksForPatterns(message: string): boolean {
  * Returns an empty string when there are none, so the common case costs one
  * concat on an unchanged constant.
  */
+/**
+ * Renders the profile as instructions the model can act on.
+ *
+ * Injected on every single turn, unlike everything else in the book. A memory
+ * about the user's name is only useful if it is present at the moment a reply is
+ * written, and "present when relevant" is exactly the condition under which
+ * greeting someone by name is not relevant -- the model has to already know.
+ *
+ * Kept short on purpose. This is prepended to every request, so every token here
+ * is paid for on every message, and a paragraph of biography would cost more than
+ * it is worth.
+ */
+export function formatProfile(facts: {
+  name?: string;
+  pronouns?: string;
+  timezone?: string;
+}): string {
+  const lines: string[] = [];
+  if (facts.name) lines.push(`- Address the user as ${facts.name}. Use it naturally, not every sentence.`);
+  if (facts.pronouns) lines.push(`- The user's pronouns are ${facts.pronouns}.`);
+  if (facts.timezone) lines.push(`- The user is in the ${facts.timezone} timezone, so "today" means today there.`);
+  if (!lines.length) return "";
+  return `\n\nABOUT THE USER (they set this themselves, so it is not a guess):\n${lines.join("\n")}`;
+}
+
 export function formatCorrections(corrections: readonly PersonMemory[]): string {
   if (!corrections.length) return "";
 

@@ -20,7 +20,7 @@ import { Mark } from "./screens/Landing.tsx";
 import { ToastStack, useToasts } from "./components/Toast.tsx";
 import type { PersonMemory } from "./types.ts";
 
-type Tab = "talk" | "notifications" | "book";
+type Tab = "talk" | "notifications" | "book" | "profile";
 
 interface Whoami {
   signedIn: boolean;

@@ -1,3 +1,4 @@
+import { todayISO } from "../../shared/memory-codec.ts";
 /**
  * What to do today.
  *
@@ -43,9 +44,7 @@ export interface Task {
 
 const DAY_MS = 86_400_000;
 
-function todayISO(now: Date): string {
-  return now.toISOString().slice(0, 10);
-}
+
 
 function daysBetween(fromISO: string, toISO: string): number {
   const from = Date.parse(`${fromISO}T00:00:00Z`);
@@ -90,8 +89,8 @@ function dueLabel(urgency: TaskUrgency, daysUntil: number, daysLate: number): st
  * Faded and stale items are marked inactive rather than dropped, so the list can
  * offer to clear them instead of silently losing them.
  */
-export function tasksFor(memories: readonly PersonMemory[], now: Date): Task[] {
-  const today = todayISO(now);
+export function tasksFor(memories: readonly PersonMemory[], now: Date, timeZone?: string): Task[] {
+  const today = todayISO(now, timeZone);
   // Local, not module-level. A shared map keyed by memory id would be mutated by
   // two concurrent requests and read by the other's sort, so the ordering would
   // depend on who answered first.
@@ -165,8 +164,8 @@ export function tasksFor(memories: readonly PersonMemory[], now: Date): Task[] {
  * halves are checkable. Nothing is paraphrased into being vaguer or firmer than
  * what was actually said.
  */
-export function composeNotice(memories: readonly PersonMemory[], tasks: readonly Task[], now: Date): string {
-  const today = todayISO(now);
+export function composeNotice(memories: readonly PersonMemory[], tasks: readonly Task[], now: Date, timeZone?: string): string {
+  const today = todayISO(now, timeZone);
   const clauses: string[] = [];
 
   // Something dated that is close. The anniversary case is the one that makes this
@@ -219,6 +218,7 @@ export function noticeHistory(
   memories: readonly PersonMemory[],
   tasks: readonly Task[],
   now: Date,
+  timeZone?: string,
   days = 7,
 ): { date: string; notice: string }[] {
   const out: { date: string; notice: string }[] = [];

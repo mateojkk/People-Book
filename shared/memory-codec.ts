@@ -91,8 +91,35 @@ export function makeMemoryId(now: Date = new Date()): string {
   return `mem_${time}_${rand}`;
 }
 
-export function todayISO(now: Date = new Date()): string {
-  return now.toISOString().slice(0, 10);
+/**
+ * Today's date, as YYYY-MM-DD.
+ *
+ * `now.toISOString().slice(0, 10)` is UTC, and that is wrong often enough to
+ * matter: at 11pm in London it is already tomorrow in UTC, so a birthday would
+ * arrive a day early and every "is this overdue" calculation would be off by one.
+ * A companion that tells you someone's birthday is tomorrow, on the day before,
+ * is worse than one that says nothing.
+ *
+ * `timeZone` is the user's, from their profile. Left off, it falls back to UTC,
+ * which is the old behaviour and is the correct answer when we do not know where
+ * the user is -- guessing a zone from an IP would be worse than admitting it.
+ */
+export function todayISO(now: Date = new Date(), timeZone?: string): string {
+  if (!timeZone) return now.toISOString().slice(0, 10);
+  try {
+    // en-CA formats as YYYY-MM-DD, which is exactly the shape wanted and avoids
+    // assembling one from parts.
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(now);
+  } catch {
+    // An unknown zone from a stale browser list must not take a notification
+    // engine down.
+    return now.toISOString().slice(0, 10);
+  }
 }
 
 export interface MakeMemoryInput {

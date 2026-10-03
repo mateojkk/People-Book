@@ -6,7 +6,7 @@
  * conversation, not peers of it. Three tabs side by side is how a chatbot
  * becomes a to-do app with a chat window.
  */
-type Tab = "talk" | "notifications" | "book";
+type Tab = "talk" | "notifications" | "book" | "profile";
 
 /**
  * The notification.
@@ -61,6 +61,7 @@ import { SEEN_EVENT, badgeLabel, unreadCount } from "../lib/unread.ts";
 import { ChatView } from "../components/ChatView.tsx";
 import { NudgeView } from "../components/NudgeView.tsx";
 import { NotificationsView } from "../components/NotificationsView.tsx";
+import { ProfilePanel } from "../components/ProfilePanel.tsx";
 import { LedgerView } from "../components/LedgerView.tsx";
 import { ErrorNote } from "../components/bits.tsx";
 import { Mark } from "./Landing.tsx";
@@ -101,7 +102,9 @@ export function Workspace({
     ? "notifications"
     : pathname.endsWith("/book")
       ? "book"
-      : "talk";
+      : pathname.endsWith("/profile")
+        ? "profile"
+        : "talk";
   const setTab = (t: Tab) => void navigate(t === "talk" ? "/app" : `/app/${t}`);
 
   // The badge. Fetched here rather than passed down because the rail and the
@@ -219,6 +222,13 @@ export function Workspace({
                 {address?.slice(0, 6)}…{address?.slice(-4)}
               </p>
               <p className="mt-1 text-[11px] text-faint">Yours, on Sui</p>
+              <button
+                type="button"
+                onClick={() => setTab("profile")}
+                className="mt-1.5 text-[11px] text-faint transition-colors hover:text-muted"
+              >
+                Profile
+              </button>
               {/* Leaving is not the same as revoking. This ends the session and
                   unplugs the wallet; the delegate key stays on the account until
                   it is removed on chain, which is a separate thing to do. */}
@@ -290,7 +300,11 @@ export function Workspace({
 
         <main className="min-h-0 flex-1">
           {tab === "talk" && <ChatView onOpenBook={() => setTab("book")} />}
-          {tab !== "talk" && (
+          {tab === "profile" ? (
+            <div className="mx-auto w-full max-w-2xl px-5 py-8">
+              <ProfilePanel />
+            </div>
+          ) : tab !== "talk" && (
             <div className="h-full overflow-y-auto px-5 py-8">
               <div className="mx-auto w-full max-w-thread">
                 {tab === "notifications" && <NotificationsView key={version} />}
@@ -354,6 +368,8 @@ function Icon({ name }: { name: IconName }) {
     talk: "M3 5.5A1.5 1.5 0 0 1 4.5 4h7A1.5 1.5 0 0 1 13 5.5v4a1.5 1.5 0 0 1-1.5 1.5H7l-3 2.5v-2.5h-.5A1.5 1.5 0 0 1 3 9.5v-4Z",
     notifications: "M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0",
     book: "M3 3.5h10v9H3v-9Zm0 2.5h10M6 9h4",
+    // A person, not a gear. A gear says "settings"; this is about who you are.
+    profile: "M12 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm7 8.5c0-3.6-3.1-5.5-7-5.5s-7 1.9-7 5.5",
 
   };
   return (
