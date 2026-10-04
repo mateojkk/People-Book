@@ -2,7 +2,7 @@
  * Verifies the thing that actually deploys.
  *
  * `npm run build` runs vite, which builds the client and nothing else. Vercel
- * then deploys a second artifact this never touched: api/[[...route]].ts, bundled
+ * then deploys a second artifact this never touched: api/handler.ts (rewritten from every /api/* path), bundled
  * as a Node serverless function. So a green build said nothing about half of what
  * ships, and the function's import graph had never been resolved outside dev --
  * where tsx resolves it lazily and forgivingly.
@@ -56,7 +56,7 @@ const outfile = resolve(root, "node_modules/.cache/fn-check.mjs");
 mkdirSync(dirname(outfile), { recursive: true });
 
 await build({
-  entryPoints: [resolve(root, "api/[[...route]].ts")],
+  entryPoints: [resolve(root, "api/handler.ts")],
   bundle: true,
   platform: "node",
   format: "esm",
@@ -68,14 +68,15 @@ await build({
 check("the whole import graph resolves", true);
 
 const mod = await import(`${outfile}?t=${Date.now()}`);
-check("it exports the app", Boolean(mod.app));
-check("with a fetch handler", typeof mod.app?.fetch === "function");
-check("and a default export for the runtime", mod.default !== undefined);
+// The entry exports only a default fetch handler now (the Hono app lives in
+// server/app.ts and is not re-exported). Assert the shape the runtime needs.
+check("it has a default export for the runtime", mod.default !== undefined);
+check("with a fetch handler", typeof mod.default?.fetch === "function");
 
-if (typeof mod.app?.fetch === "function") {
+if (typeof mod.default?.fetch === "function") {
   // Calling it proves the bundle actually runs, not merely parses. A missing
   // native module or a top-level throw in an import would only show up here.
-  const health = await mod.app.request("/api/health");
+  const health = await mod.default.fetch(new Request("http://x/api/health"));
   check("and it answers a request", health.status === 200, `status ${health.status}`);
 
   const body = await health.json().catch(() => null);
@@ -83,7 +84,7 @@ if (typeof mod.app?.fetch === "function") {
   check("and its config flags reported", typeof body?.config?.groq === "boolean");
 
   // A route that should not exist must not, or the catch-all has swallowed it.
-  const missing = await mod.app.request("/api/definitely-not-a-route");
+  const missing = await mod.default.fetch(new Request("http://x/api/definitely-not-a-route"));
   check("an unknown route 404s rather than matching", missing.status === 404, `status ${missing.status}`);
 }
 

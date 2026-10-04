@@ -3,7 +3,7 @@
  *
  * ── Why the imports below end in .js and not .ts ─────────────────────────────
  *
- * This deployment returned
+ * An earlier deployment returned
  *
  *   Error Code: FUNCTION_INVOCATION_FAILED
  *
