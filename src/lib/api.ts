@@ -56,9 +56,79 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return payload as T;
 }
 
+/**
+ * GET cache with mutation invalidation.
+ *
+ * Every tab fetches on mount, and every one of those endpoints reads the full
+ * ledger server-side. Without this, switching tabs is a relayer round trip each
+ * time -- which is why the tabs felt slow. The server caches for 15s; this
+ * stretches that to 30s client-side and, more importantly, dedupes concurrent
+ * identical requests, so a double-mounted view fires one fetch instead of two.
+ *
+ * Invalidation is deliberately coarse: ANY mutation busts the whole cache. A
+ * profile save busting the task-list entry is slightly wasteful, but a surgical
+ * scheme that misses one case serves stale tasks -- and a "Done" button whose
+ * tap visibly does nothing is worse than one extra fetch. Correctness first.
+ *
+ * Errors are never cached. A failed GET must retry next time, not serve the
+ * failure for thirty seconds.
+ */
+const GET_TTL_MS = 30_000;
+const getCache = new Map<string, { at: number; value: unknown }>();
+const getInflight = new Map<string, Promise<unknown>>();
+
+// A generation counter: bustGetCache bumps it, and a fetch that started before
+// the bump must not populate the cache afterwards.
+let cacheGeneration = 0;
+
+function bustGetCache(): void {
+  cacheGeneration++;
+  getCache.clear();
+  // In-flight requests are left to land: they were issued before the mutation,
+  // so their data predates it, and dropping them would turn a settled write into
+  // a hanging promise. They simply are not stored (see below).
+}
+
+async function cachedGet<T>(path: string): Promise<T> {
+  const cached = getCache.get(path);
+  if (cached && Date.now() - cached.at < GET_TTL_MS) return cached.value as T;
+
+  const inflight = getInflight.get(path);
+  if (inflight) return inflight as Promise<T>;
+
+  const startedGeneration = cacheGeneration;
+  const pending = request<T>(path).then(
+    (value) => {
+      getInflight.delete(path);
+      // Only store if no mutation landed while we were away. A write that
+      // completed mid-fetch makes this response stale on arrival.
+      if (startedGeneration === cacheGeneration) getCache.set(path, { at: Date.now(), value });
+      return value;
+    },
+    (error) => {
+      getInflight.delete(path);
+      throw error;
+    },
+  );
+  getInflight.set(path, pending);
+  return pending;
+}
+
 export const api = {
-  get: <T>(path: string) => request<T>(path),
-  post: <T>(path: string, body?: unknown) =>
-    request<T>(path, { method: "POST", body: JSON.stringify(body ?? {}) }),
-  del: <T>(path: string) => request<T>(path, { method: "DELETE" }),
+  get: <T>(path: string) => cachedGet<T>(path),
+  post: <T>(path: string, body?: unknown) => {
+    bustGetCache();
+    return request<T>(path, { method: "POST", body: JSON.stringify(body ?? {}) });
+  },
+  del: <T>(path: string) => {
+    bustGetCache();
+    return request<T>(path, { method: "DELETE" });
+  },
+  /** Test-only: how many entries are cached. */
+  _cacheSizeForTests: () => getCache.size,
+  /** Test-only: clear cache and in-flight map between cases. */
+  _resetForTests: () => {
+    getCache.clear();
+    getInflight.clear();
+  },
 };

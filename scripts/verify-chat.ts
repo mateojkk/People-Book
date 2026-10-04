@@ -162,7 +162,11 @@ section("a turn reports its phases in order");
   // about what the wait was for.
   check("writing is skipped when nothing is writable", !phases.includes("writing"), phases.join(" > "));
   const order = ["reading", "extracting", "writing", "replying"];
-  const inOrder = phases.every((p, i) => i === 0 || order.indexOf(p) >= order.indexOf(phases[i - 1]));
+  const inOrder = phases.every((p, i) => {
+    if (i === 0) return true;
+    const prev = phases[i - 1];
+    return prev !== undefined && order.indexOf(p) >= order.indexOf(prev);
+  });
   check("phases never go backwards", inOrder, phases.join(" > "));
 }
 

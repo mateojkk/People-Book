@@ -50,14 +50,16 @@ async function main() {
     check("a deep link returns the app, not a 404", deep.res.status === 200, String(deep.res.status));
   }
 
-  section("the service worker is reachable and uncached");
+  section("the service worker unregisters itself and is uncached");
+  // The OS push feature was removed. public/sw.js is a tombstone whose only act
+  // is self.registration.unregister(), so browsers that installed the old worker
+  // stop running it. Asserting the tombstone rather than deleting the check is
+  // deliberate: a missing file leaves the installed worker in place forever.
   {
     const { res, text } = await get("/sw.js");
     check("200", res.status === 200, String(res.status));
-    // The content type is the real assertion. Sniffing the body fails because the
-    // first 400 bytes of sw.js are the comment explaining why it exists.
     check("it is served as JavaScript", /javascript|ecmascript/i.test(res.headers.get("content-type") ?? ""), res.headers.get("content-type") ?? "(none)");
-    check("and it looks like a worker", /addEventListener\("?(message|install|notificationclick)/.test(text.slice(0, 2000)));
+    check("and it is the unregistering tombstone, not a worker", /self\.registration\.unregister/.test(text.slice(0, 3000)));
     // A cached sw.js means a fix never reaches anyone.
     const cc = res.headers.get("cache-control") ?? "";
     check("and is not cached", /max-age=0|no-store|no-cache/i.test(cc), cc || "(no cache-control)");
