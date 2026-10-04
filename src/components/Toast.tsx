@@ -35,7 +35,7 @@ export function ToastStack({ toasts, onDismiss }: { toasts: readonly Toast[]; on
       role="status"
       aria-live="polite"
       aria-atomic="false"
-      className="pointer-events-none fixed bottom-4 right-4 z-50 flex w-[min(22rem,calc(100vw-2rem))] flex-col gap-2"
+      className="pointer-events-none fixed right-4 bottom-[4.5rem] z-50 flex w-[min(22rem,calc(100vw-2rem))] flex-col gap-2 lg:bottom-4"
     >
       {toasts.map((t) => (
         <ToastCard key={t.id} toast={t} onDismiss={onDismiss} />

@@ -340,6 +340,53 @@ export function Workspace({
           )}
         </main>
 
+        {/* Mobile navigation. Below lg the sidebar is hidden, which left phones
+            with no way to switch tabs at all -- the header has no navigation.
+            Bottom bar is the standard pattern: thumb-reachable, always visible,
+            and it carries the unread badge so notifications stay discoverable. */}
+        <nav
+          aria-label="Primary"
+          className="grid shrink-0 grid-cols-4 border-t border-rule bg-surface px-2 pt-1 lg:hidden"
+          style={{ paddingBottom: "max(0.25rem, env(safe-area-inset-bottom))" }}
+        >
+          {(
+            [
+              { id: "talk", label: "Talk", icon: "talk" },
+              { id: "notifications", label: "Notifs", icon: "notifications" },
+              { id: "book", label: "Book", icon: "book" },
+              { id: "profile", label: "You", icon: "profile" },
+            ] as const
+          ).map((item) => {
+            const active = tab === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setTab(item.id)}
+                aria-current={active || undefined}
+                aria-label={
+                  item.id === "notifications" && unread > 0
+                    ? `Notifications, ${unread} unseen`
+                    : item.label
+                }
+                className={`relative flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-lg text-[10px] leading-none transition-colors ${
+                  active ? "text-text" : "text-faint"
+                }`}
+              >
+                <Icon name={item.icon} />
+                <span>{item.label}</span>
+                {item.id === "notifications" && unread > 0 && (
+                  <span
+                    aria-hidden="true"
+                    className="mono pointer-events-none absolute top-0.5 right-1/2 min-w-[17px] translate-x-4 rounded-full bg-badge px-1 text-center text-[10px] leading-[17px] font-bold text-white tabular"
+                  >
+                    {badgeLabel(unread)}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
       </div>
     </div>
   );
