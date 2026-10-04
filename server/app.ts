@@ -783,13 +783,29 @@ app.post("/api/chat", async (c) => {
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
-        // Sent before anything slow happens. Reading the ledger can take seconds,
-        // and without this the browser shows a spinner with no explanation of what
-        // it is waiting for.
-        controller.enqueue(send({ type: "status", detail: "Reading your book" }));
+        // Phases, not a spinner. A turn can take the better part of a minute --
+        // recall, then extraction, then writes, then the reply -- and NN/g's rule
+        // for waits past ten seconds is that "please wait" is not feedback. Each
+        // phase names what is actually happening in plain language, and phases
+        // that do not happen are never announced: most messages write nothing, so
+        // a "writing" status on those turns would misattribute the wait.
+        //
+        // "Thinking" stays for the reply itself because it is what the model is
+        // doing, but it arrives on the first token rather than as a phase: by the
+        // time tokens flow, the wait is visibly over.
+        const PHASE_STATUS = {
+          reading: "Reading your book",
+          extracting: "Figuring out what's worth keeping",
+          writing: "Writing to your book",
+          replying: null, // superseded by "Thinking" on first token
+        } as const;
 
         let opened = false;
         const result = await takeTurn(turn, {
+          onPhase: (phase) => {
+            const detail = PHASE_STATUS[phase];
+            if (detail && !opened) controller.enqueue(send({ type: "status", detail }));
+          },
           onDelta: (text) => {
             if (!opened) {
               opened = true;

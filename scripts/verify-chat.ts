@@ -141,6 +141,31 @@ section("a turn files what was said and answers back");
   );
 }
 
+// ── The wait narrates itself ───────────────────────────────────────────────────
+// NN/g's rule for waits past ten seconds: "please wait" is not feedback. A turn
+// can take the better part of a minute, so each phase names what is happening.
+// Phases that do not happen are never announced -- most messages write nothing.
+section("a turn reports its phases in order");
+
+{
+  const s = stubStore();
+  const phases: string[] = [];
+  await takeTurn(
+    { store: s.store, message: "hey, how's it going" },
+    { onPhase: (phase) => void phases.push(phase) },
+  );
+  check("reading comes first", phases[0] === "reading", phases.join(" > "));
+  check("extraction is named, not hidden", phases.includes("extracting"), phases.join(" > "));
+  check("the reply phase follows", phases[phases.length - 1] === "replying", phases.join(" > "));
+  // Without the model nothing is confident enough to write, which is exactly the
+  // common case: most messages file nothing, so announcing "writing" would lie
+  // about what the wait was for.
+  check("writing is skipped when nothing is writable", !phases.includes("writing"), phases.join(" > "));
+  const order = ["reading", "extracting", "writing", "replying"];
+  const inOrder = phases.every((p, i) => i === 0 || order.indexOf(p) >= order.indexOf(phases[i - 1]));
+  check("phases never go backwards", inOrder, phases.join(" > "));
+}
+
 // ── It volunteers without being asked ─────────────────────────────────────────
 section("it brings things up unprompted");
 

@@ -102,14 +102,18 @@ export interface ChatTurn {
  * Saving happens before the reply is written so the reply can speak to what was
  * just stored — telling someone "noted" is only honest if it is already durable.
  */
+export type TurnPhase = "reading" | "extracting" | "writing" | "replying";
+
 export async function takeTurn(
   { store, message, undoOf = [], history = [] }: ChatTurnInput,
-  hooks: { onDelta?: (text: string) => void } = {},
+  hooks: { onDelta?: (text: string) => void; onPhase?: (phase: TurnPhase) => void } = {},
 ): Promise<ChatTurn> {
+  hooks.onPhase?.("reading");
   const { memories, coverage } = await store.listLive();
   const known = [...new Set(memories.map((m) => m.person))];
 
   // ── 1. Notice and write ─────────────────────────────────────────────────────
+  hooks.onPhase?.("extracting");
   const extraction = await capture(message, known, history);
 
   const saved: SavedMemory[] = [];
@@ -135,14 +139,17 @@ export async function takeTurn(
   // other -- three sequential network waits where one concurrent batch is the
   // same total time. allSettled rather than all, so one failed write still does
   // not cost the turn.
-  const writes = extraction.candidates
-    .filter((candidate) => {
-      if (candidate.confidence < CONFIRM_THRESHOLD) return false;
-      const candidateKey = key(candidate.person, candidate.text);
-      if (saidAlready.has(candidateKey)) return false;
-      saidAlready.add(candidateKey);
-      return true;
-    })
+  const writable = extraction.candidates.filter((candidate) => {
+    if (candidate.confidence < CONFIRM_THRESHOLD) return false;
+    const candidateKey = key(candidate.person, candidate.text);
+    if (saidAlready.has(candidateKey)) return false;
+    saidAlready.add(candidateKey);
+    return true;
+  });
+  // Only announced when there is something to write. Most messages produce
+  // nothing, and a status for a phase that did not happen misattributes the wait.
+  if (writable.length) hooks.onPhase?.("writing");
+  const writes = writable
     .map((candidate) =>
       store
         .remember({
@@ -236,6 +243,7 @@ export async function takeTurn(
   }
 
   const cited = pickCitations(after, threadSubjects, volunteered);
+  hooks.onPhase?.("replying");
   const reply = await composeReply({ message, history, memories: after, volunteered, cited, saved, onDelta: hooks.onDelta });
 
   return {
