@@ -550,8 +550,23 @@ memory. If you ever want embeddings computed client-side instead,
 
 ## Deploying to Vercel
 
-The repo is a Vite app plus one serverless function (`api/[[...route]].ts`). It
-deploys as-is; nothing here is deploy-specific beyond `vercel.json`.
+The repo is a Vite app plus one serverless function (`api/[[...route]].ts`).
+
+`vercel.json` is four lines and contains one rule. Vercel infers the build command,
+output directory, framework preset, install command and Node runtime on its own --
+pinning them was redundant, and redundant config is what produced a rejected deploy
+(`engines` is not a valid `vercel.json` property; it belongs in `package.json`).
+
+The one thing Vercel cannot infer is the SPA fallback, because it has no way to know
+a Vite build is client-routed rather than filesystem-routed:
+
+```json
+{ "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }] }
+```
+
+Remove it and a hard refresh on `/app/book` or `/app/profile` returns a 404. The
+negative lookahead keeps `/api/*` out of it, or every API call would be answered with
+`index.html`. Vercel's docs are explicit that this rewrite is required.
 
 ```bash
 npm i -g vercel
@@ -598,5 +613,8 @@ HTTP/1.1; on Vercel it is the kind of header that turns a working endpoint into 
 500. Removed, with a comment so it does not come back.
 
 **A cached `sw.js`.** Browsers cache service workers in their own store, and a fix
-that ships with a cached worker never reaches anyone. `vercel.json` sets
-`no-cache` on `sw.js` and on `index.html`, and immutable on the hashed assets.
+that ships with a cached worker never reaches anyone. Vercel's default is already
+`public, max-age=0, must-revalidate` for non-hashed paths, which is correct, so
+there is no config for it -- `npm run verify:deploy` asserts the deployed
+`sw.js` actually carries it. Configuration that duplicates a platform default only
+drifts; a check that fails tells you which default moved.
