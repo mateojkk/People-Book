@@ -317,8 +317,14 @@ export function Workspace({
         <main className="min-h-0 flex-1">
           {tab === "talk" && <ChatView onOpenBook={() => setTab("book")} />}
           {tab === "profile" ? (
-            <div className="mx-auto w-full max-w-2xl px-5 py-8">
-              <ProfilePanel />
+            // h-full + overflow-y-auto, matching the other tabs: without it the
+            // shell's h-screen overflow-hidden clips anything below the fold with
+            // no way to reach it, which on a phone meant the Save button existed
+            // but could never be scrolled to.
+            <div className="h-full overflow-y-auto px-5 py-8">
+              <div className="mx-auto w-full max-w-2xl">
+                <ProfilePanel />
+              </div>
             </div>
           ) : tab !== "talk" && (
             <div className="h-full overflow-y-auto px-5 py-8">
