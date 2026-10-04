@@ -563,12 +563,16 @@ npm run verify:deploy https://<your-domain>
 
 ### Environment
 
-`GROQ_API_KEY`, `SESSION_SECRET` (`openssl rand -hex 32`), `MEMWAL_DELEGATE_KEY`
-(`npm run keygen`) and `MEMWAL_REGISTRY_ID` are required. `VITE_SUI_NETWORK` and
-`VITE_SUI_RPC_URL` are required too, and they are **build-time** -- they are
-inlined into the client bundle, so setting them in the dashboard *after* a deploy
-changes nothing. `npm run verify:deploy` checks for exactly this, because the
-symptom is an app that loads and then cannot reach Sui.
+Six variables are required: `GROQ_API_KEY`, `SESSION_SECRET` (`openssl rand -hex
+32`), `MEMWAL_DELEGATE_KEY` (`npm run keygen`), `MEMWAL_REGISTRY_ID`, `SUI_RPC_URL`
+and `MEMWAL_SERVER_URL`. Everything else is optional.
+
+The two `VITE_` Sui variables are **build-time** -- inlined into the client bundle,
+so setting them in the dashboard *after* a deploy changes nothing. They are also
+optional for mainnet, because `src/main.tsx` already defaults both to mainnet and
+the mainnet RPC. Set them only for testnet or to pin a specific RPC.
+`npm run verify:deploy` checks the bundle actually got them, because the symptom is
+an app that loads and then silently talks to the wrong network.
 
 ### Verifying a deploy
 
