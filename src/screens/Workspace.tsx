@@ -323,7 +323,7 @@ export function Workspace({
             // but could never be scrolled to.
             <div className="h-full overflow-y-auto px-5 py-8">
               <div className="mx-auto w-full max-w-2xl">
-                <ProfilePanel />
+                <ProfilePanel onDisconnect={onDisconnect} />
               </div>
             </div>
           ) : tab !== "talk" && (

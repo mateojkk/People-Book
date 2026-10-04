@@ -42,7 +42,7 @@ function knownZones(): string[] {
   return [...new Set([here, "UTC", ...list].filter(Boolean))];
 }
 
-export function ProfilePanel() {
+export function ProfilePanel({ onDisconnect }: { onDisconnect: () => void }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [draft, setDraftRaw] = useState<Profile>({});
   // Any edit retires the "Saved." confirmation: it was true of what was there
@@ -213,6 +213,20 @@ export function ProfilePanel() {
           {state === "saving" ? "Saving…" : "Save"}
         </button>
         {state === "saved" && <span className="text-[12px] text-muted">Saved.</span>}
+      </div>
+
+      <div className="mt-8 border-t border-rule pt-5">
+        <button
+          type="button"
+          onClick={onDisconnect}
+          className="min-h-11 text-[12.5px] text-faint transition-colors hover:text-stop"
+        >
+          Log out
+        </button>
+        <p className="mt-1 text-[11px] leading-5 text-faint">
+          Ends this session and unplugs the wallet. Access granted on chain stays
+          until removed there.
+        </p>
       </div>
     </div>
   );
