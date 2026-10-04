@@ -152,6 +152,79 @@ function toErrorResponse(c: Context, error: unknown): Response {
   return c.json({ error: "internal", message }, 500);
 }
 
+// ── MemWal relay proxy ──────────────────────────────────────────────────────
+//
+// The browser holds the delegate keypair. It signs every MemWal request itself
+// and sends it here; this forwards it to the relayer with the signing headers
+// untouched. **This route holds no key and must never gain one.** Its whole
+// reason to exist is CORS: the relayer sends no Access-Control-Allow-Origin on
+// preflight, so a direct browser call fails with "Failed to fetch". Relaying
+// from the server side is the fix, and it is deliberately a dumb byte-and-header
+// forward rather than a place where a key lives.
+//
+// Modelled on vela/handlers/memwal.py, which does the same thing and has the same
+// comment about why.
+
+const MEMWAL_FORWARD_HEADERS = [
+  "content-type",
+  "x-public-key",
+  "x-signature",
+  "x-timestamp",
+  "x-nonce",
+  "x-account-id",
+  "x-delegate-key",
+  "x-seal-session",
+  "x-memwal-account-id",
+  "x-memwal-namespace",
+] as const;
+
+app.all("/api/memwal/*", async (c) => {
+  const upstreamBase = (
+    process.env.MEMWAL_SERVER_URL ?? "https://relayer.memory.walrus.xyz"
+  ).replace(/\/$/, "");
+
+  // Everything after /api/memwal is the relayer's own path.
+  const suffix = new URL(c.req.url).pathname.replace(/^\/api\/memwal/, "") || "/";
+  const target = upstreamBase + suffix + new URL(c.req.url).search;
+
+  const headers = new Headers();
+  for (const name of MEMWAL_FORWARD_HEADERS) {
+    const value = c.req.header(name);
+    if (value) headers.set(name, value);
+  }
+
+  const hasBody = c.req.method !== "GET" && c.req.method !== "HEAD";
+  const body = hasBody ? await c.req.arrayBuffer() : undefined;
+
+  try {
+    const upstream = await fetch(target, {
+      method: c.req.method,
+      headers,
+      body,
+      // The relayer is authoritative for the outcome of a write; relaying its
+      // status verbatim is what lets the browser tell "accepted" from "failed".
+      redirect: "manual",
+    });
+
+    const outHeaders = new Headers();
+    for (const name of ["content-type", "x-request-id", "retry-after"]) {
+      const value = upstream.headers.get(name);
+      if (value) outHeaders.set(name, value);
+    }
+
+    return new Response(upstream.body, {
+      status: upstream.status,
+      headers: outHeaders,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return c.json(
+      { error: "relay_failed", message: `Could not reach the MemWal relayer: ${message}` },
+      502,
+    );
+  }
+});
+
 // ── Health ───────────────────────────────────────────────────────────────────
 
 app.get("/api/health", async (c) => {
