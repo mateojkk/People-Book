@@ -180,6 +180,12 @@ function normalise(raw: unknown): MemoryCandidate[] {
       reasoning: reasoning ?? "",
       confidence,
       explicit: item?.explicit === true,
+      // Passed through as a string, verified later. takeTurn only honours it when
+      // it names a real open promise; anything else is ignored and the candidate
+      // is filed as new. The model suggests, the ledger decides.
+      ...(asString((item as { fulfillsPromiseId?: unknown }).fulfillsPromiseId)
+        ? { fulfillsPromiseId: asString((item as { fulfillsPromiseId?: unknown }).fulfillsPromiseId) }
+        : {}),
     });
   }
   return out;
@@ -212,11 +218,19 @@ function withRecurringDate(candidate: MemoryCandidate, now: Date): MemoryCandida
   return { ...candidate, anniversary: resolved };
 }
 
+export interface OpenPromise {
+  id: string;
+  person: string;
+  text: string;
+}
+
 export async function capture(
   message: string,
   knownPeople: readonly string[],
   /** The last few turns, so a follow-up like "and her?" can be resolved. */
   history: readonly { role: "you" | "assistant"; text: string }[] = [],
+  /** Promises still open, so reporting one done can close it instead of filing twice. */
+  openPromises: readonly OpenPromise[] = [],
 ): Promise<CaptureResult> {
   if (!process.env.GROQ_API_KEY) {
     return { candidates: [], error: "GROQ_API_KEY is not set, so nothing was extracted. Nothing was written." };
@@ -245,7 +259,7 @@ export async function capture(
   const said = [message, ...history.map((h) => h.text)].join("\n").toLowerCase();
 
   try {
-    const raw = await extractRaw(message, knownPeople, history);
+    const raw = await extractRaw(message, knownPeople, history, openPromises);
     const candidates = normalise(raw)
       .filter((c) => isAttributable(c.person, allowed, said))
       // The model did not emit `anniversary` in 4 runs out of 4, so it is derived
@@ -264,6 +278,7 @@ async function extractRaw(
   message: string,
   knownPeople: readonly string[],
   history: readonly { role: "you" | "assistant"; text: string }[] = [],
+  openPromises: readonly OpenPromise[] = [],
 ): Promise<unknown> {
   const response = await groqFetch(
     [
@@ -272,6 +287,11 @@ async function extractRaw(
         role: "user",
           content: [
             `People already in the book: ${knownPeople.length ? knownPeople.join(", ") : "(none yet)"}`,
+            openPromises.length
+              ? `Open promises (things they said they would do and have not reported done):\n${openPromises
+                  .map((p) => `- [${p.id}] ${p.person}: ${p.text}`)
+                  .join("\n")}\nIf their message reports completing one of these, set fulfillsPromiseId to its [id] and status to "kept". Only an id from this list; anything else is ignored. If it reports something new, leave fulfillsPromiseId unset.`
+              : "",
             // Enough of the thread for a pronoun to resolve, and no more: this is
             // extraction, and a long transcript mostly adds text to mis-attribute.
             history.length
@@ -307,6 +327,10 @@ async function extractRaw(
                       person: { type: "string", description: "Who the fact is about. Must be one of the people named in the message, or 'you'." },
                       type: { type: "string", enum: [...VALID_TYPES] },
                       status: { type: "string", enum: ["open", "kept", "active"] },
+                      fulfillsPromiseId: {
+                        type: "string",
+                        description: "The [id] of an open promise above that this message reports as done. Unset for anything new.",
+                      },
                       text: { type: "string", description: "The fact, third person, self-contained." },
                       occurredAt: { type: "string", description: "ISO date it happened, if known." },
                       dueAt: { type: "string", description: "ISO date it becomes due, if known." },

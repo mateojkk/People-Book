@@ -8,7 +8,7 @@
  * a network to verify.
  */
 
-import { takeTurn, worthSaving, duplicateKey } from "../server/chat.js";
+import { takeTurn, worthSaving, duplicateKey, resolveWrites } from "../server/chat.js";
 import type { PeopleBookStore } from "../shared/store.js";
 import { makeMemory, type MakeMemoryInput } from "../shared/memory-codec.js";
 import type { MemoryCandidate, PersonMemory } from "../shared/types.js";
@@ -117,6 +117,71 @@ check(
   worthSaving([candidate({ confidence: CONFIRM_THRESHOLD - 0.01 }) as MemoryCandidate]).length === 0,
   "below threshold must not be written",
 );
+
+// ── A reported completion closes the promise instead of duplicating it ───────
+// Reporting something done used to file a second memory while the promise stayed
+// open forever: the app then nagged about what was finished and could not say it
+// was finished. resolveWrites is pure, so this is asserted without a model.
+section("a completion revises rather than duplicates");
+
+function openPromise(id: string, person = "Mara", text = "Call them Sunday"): PersonMemory {
+  return makeMemory({ id, person, type: "promise", status: "open", text, confidence: "confirmed" } as unknown as MakeMemoryInput);
+}
+function resolveOpts(said = new Set<string>()) {
+  return { confirmThreshold: CONFIRM_THRESHOLD, key: duplicateKey, saidAlready: said };
+}
+
+{
+  const promise = openPromise("p1");
+  const { revisions, writable } = resolveWrites([promise], [candidate({ fulfillsPromiseId: "p1" })], resolveOpts());
+  check("a valid link revises", revisions.length === 1 && revisions[0]!.existing.id === "p1");
+  check("and files nothing separately", writable.length === 0);
+}
+
+{
+  const { revisions, writable } = resolveWrites([openPromise("p1")], [candidate({ fulfillsPromiseId: "nope" })], resolveOpts());
+  check("a bogus id is not trusted", revisions.length === 0);
+  check("and the memory is kept, not dropped", writable.length === 1);
+}
+
+{
+  const closed = openPromise("p1");
+  (closed as { status: string }).status = "kept";
+  const { revisions, writable } = resolveWrites([closed], [candidate({ fulfillsPromiseId: "p1" })], resolveOpts());
+  check("a closed promise is not revised again", revisions.length === 0);
+  check("the candidate still files normally", writable.length === 1);
+}
+
+{
+  const trait = makeMemory({ id: "t1", person: "Pat", type: "trait", text: "Works nights.", confidence: "confirmed" } as unknown as MakeMemoryInput);
+  const { revisions, writable } = resolveWrites([trait], [candidate({ fulfillsPromiseId: "t1" })], resolveOpts());
+  check("a non-promise is never a revision target", revisions.length === 0);
+  check("and the candidate files normally", writable.length === 1);
+}
+
+{
+  const { revisions, writable } = resolveWrites(
+    [openPromise("p1")],
+    [candidate({ fulfillsPromiseId: "p1", confidence: CONFIRM_THRESHOLD - 0.01 })],
+    resolveOpts(),
+  );
+  check("an uncertain completion revises nothing", revisions.length === 0);
+  check("and files nothing", writable.length === 0);
+}
+
+{
+  const promise = openPromise("p1", "Pat", "Call them Sunday");
+  const said = new Set<string>();
+  const { revisions } = resolveWrites([promise], [candidate({ fulfillsPromiseId: "p1" })], resolveOpts(said));
+  check("the closed promise text is marked said", revisions.length === 1);
+  const again = resolveWrites([promise], [candidate({ person: "Pat", text: "Call them Sunday" })], resolveOpts(said));
+  check("so the same words cannot file a duplicate after", again.writable.length === 0);
+}
+
+{
+  const { revisions, writable } = resolveWrites([openPromise("p1")], [candidate()], resolveOpts());
+  check("an ordinary candidate still files", revisions.length === 0 && writable.length === 1);
+}
 
 // ── A turn writes and answers ─────────────────────────────────────────────────
 section("a turn files what was said and answers back");

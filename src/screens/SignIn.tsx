@@ -62,28 +62,23 @@ export function SignIn({
       {!address ? (
         <section className="mt-5">
           <h1 className="text-xl font-bold tracking-tight text-text">Sign in</h1>
-          <p className="mt-2.5 text-[13.5px] leading-6 text-muted">
-            You will sign one message so we can prove the address is yours. Nothing
-            is sent anywhere and nothing costs gas.
+          <p className="mt-2 text-[13px] leading-6 text-muted">
+            One signature proves the address is yours. Free.
           </p>
 
-          {/* Connect, then sign -- one at a time. They used to sit side by side,
-              which asked the visitor to choose between two buttons doing
-              different halves of the same job, and gave no way to tell which was
-              which. */}
           <div className="mt-5">
             {!walletConnected ? (
               <>
                 <ConnectButton />
-                {/* The web-wallet popup path (Slush without the extension) opens
-                    my.slush.app, which is region-gated: from a blocked region it
-                    serves a 451 instead of the approval screen, so the connect
-                    fails as an opaque "invalid request". The extension talks to
-                    the page directly with no popup and no region gate. */}
-                <p className="mt-3 text-[11.5px] leading-5 text-faint">
-                  If connecting fails or loops, install the Slush (Sui) browser
-                  extension and connect through that instead of the web popup.
-                </p>
+                <details className="mt-3">
+                  <summary className="cursor-pointer text-[11.5px] text-faint hover:text-muted">
+                    Connecting fails or loops?
+                  </summary>
+                  <p className="mt-1.5 text-[11.5px] leading-5 text-faint">
+                    Install the Slush browser extension and connect through that
+                    instead of the web popup.
+                  </p>
+                </details>
               </>
             ) : (
               <button
@@ -95,11 +90,8 @@ export function SignIn({
             )}
           </div>
 
-          {state.phase !== "disconnected" && state.phase !== "error" && (
-            <pre className="mono mt-5 max-h-32 overflow-auto whitespace-pre-wrap rounded-lg bg-panel p-3 text-[11px] leading-5 text-faint">
-              {state.phase === "signing" ? state.message : "preparing…"}
-            </pre>
-          )}
+          {/* Phases log to the console, not the page. A <pre> of internal state
+              used to sit here; it answered a debugging question no visitor asked. */}
           {state.phase === "error" && (
             <p className="mt-5 text-[13px] leading-6 text-stop">{state.message}</p>
           )}
@@ -108,88 +100,41 @@ export function SignIn({
       ) : (
         <section className="mt-5">
           <h1 className="text-xl font-bold tracking-tight text-text">One step left</h1>
-          <p className="mt-2.5 text-[13.5px] leading-6 text-muted">
-            Signed in as{" "}
-            <span className="mono text-[13px] text-text">
+          <p className="mt-2 text-[13px] leading-6 text-muted">
+            <span className="mono text-text">
               {address.slice(0, 6)}…{address.slice(-4)}
             </span>
-            .{" "}
+            {" — "}
             {hasAccount
-              ? "This address already has a Walrus Memory account, so it just needs permission."
-              : "This address has no Walrus Memory account yet, so it needs one, then permission."}
+              ? "grant this browser access to your account."
+              : "create your account, then grant this browser access."}{" "}
+            Needs a little SUI for gas.
           </p>
-
-          <ol className="mt-4 space-y-2 text-[12.5px] leading-6 text-muted">
-            {hasAccount ? (
-              <li>
-                <span className="text-text">1.</span> Approve a delegate key, so this app
-                can read and write inside your account. You will see the exact key you
-                are granting.
-              </li>
-            ) : (
-              <>
-                <li>
-                  <span className="text-text">1.</span> Create a Walrus Memory account. It
-                  is owned by your address, not by us.
-                </li>
-                <li>
-                  <span className="text-text">2.</span> Approve a delegate key, so this app
-                  can read and write inside it.
-                </li>
-              </>
-            )}
-            <li>
-              <span className="text-text">{hasAccount ? "2" : "3"}.</span> That is it. These
-              are wallet transactions, so they need a little SUI for gas.
-            </li>
-          </ol>
 
           <button
             onClick={onCreateAndGrant}
             disabled={working}
-            className="mt-6 rounded-lg bg-accent px-4 py-2.5 text-[13px] font-bold text-base transition-opacity hover:opacity-90 disabled:opacity-50"
+            className="mt-5 rounded-lg bg-accent px-4 py-2.5 text-[13px] font-bold text-base transition-opacity hover:opacity-90 disabled:opacity-50"
           >
-            {working ? "working — approve in your wallet…" : hasAccount ? "Grant access" : "Create account and grant access"}
+            {working ? "Approve in your wallet…" : hasAccount ? "Grant access" : "Create account and grant access"}
           </button>
 
-          {step !== "idle" && (
-            <p className="mono mt-4 text-[12px] leading-5 text-faint">
+          {step !== "idle" && step !== "done" && (
+            <p className="mono mt-3 text-[12px] text-faint">
               {step === "creating" && "Creating your account…"}
-              {step === "granting" && "Adding the delegate key…"}
-              {/* Every non-idle step says something. `needs_account_id` used to
-                  render nothing at all, so the button looked dead when it had in
-                  fact worked and was asking for an account id. */}
+              {step === "granting" && "Adding the key…"}
               {step === "error" && "That did not go through — see below."}
               {step === "needs_account_id" && "This address already has an account — paste its id below."}
-              {step === "done" && "Done — you are in."}
             </p>
           )}
 
-          {/* The setup error, shown where the button is. Without this, a failure
-              in `start()` only reached the console, so the screen said nothing
-              and the button read as unresponsive. */}
-          {step === "error" && setupMessage && (
-            <p className="mt-3 rounded-lg bg-panel px-4 py-3 text-[12.5px] leading-6 text-stop">
-              {setupMessage}
-            </p>
-          )}
-          {step === "needs_account_id" && setupMessage && (
-            <p className="mt-3 rounded-lg bg-panel px-4 py-3 text-[12.5px] leading-6 text-muted">
-              {setupMessage}
-            </p>
-          )}
-          {step === "done" && setupMessage && (
-            <p className="mt-3 rounded-lg bg-panel px-4 py-3 text-[12.5px] leading-6 text-muted">
+          {(step === "error" || step === "needs_account_id") && setupMessage && (
+            <p className={`mt-3 rounded-lg bg-panel px-4 py-3 text-[12.5px] leading-6 ${step === "error" ? "text-stop" : "text-muted"}`}>
               {setupMessage}
             </p>
           )}
 
-          {/* The escape hatch, and it earns its place. This screen says "you have
-              no account" because the registry had no entry -- but a failed lookup
-              and a genuinely new address look identical from here. Without this,
-              the app would confidently offer to create an account that already
-              exists and fail onchain. */}
-          <details className="mt-6 bg-panel px-4 py-3.5 rounded-lg">
+          <details className="mt-5 bg-panel px-4 py-3 rounded-lg">
             <summary className="cursor-pointer text-[12px] text-faint transition-colors hover:text-muted">
               I already have a Walrus Memory account
             </summary>
@@ -209,32 +154,17 @@ export function SignIn({
                 Use it
               </button>
             </div>
-            <p className="mt-2 text-[11px] leading-5 text-faint">
-              Checked against the registry, so this cannot be pointed at somebody
-              else's account.
-            </p>
           </details>
 
-          <p className="mt-6 rounded-lg bg-panel px-4 py-3.5 text-[12px] leading-6 text-faint">
-            Granting gives this app a scoped key to your account. It can be removed
-            in one transaction on Sui, and the account goes quiet immediately —
-            that is the whole revocation story, and there is no other way to take
-            it away.
-          </p>
-
-          {/* Leaving here is not the same as revoking, and conflating them would
-              be dishonest. This ends the session and unplugs the wallet; the
-              delegate key stays on the account until it is removed on chain. */}
-          <button
-            onClick={onDisconnect}
-            className="mt-3 text-[11.5px] text-faint transition-colors hover:text-muted"
-          >
-            Disconnect wallet
-          </button>
-
-          <p className="mt-1.5 text-[11px] leading-5 text-faint">
-            Ends this session and unplugs the wallet. The access you granted stays
-            on chain until you remove it there.
+          <p className="mt-4 text-[11.5px] leading-5 text-faint">
+            Revocable in one Sui transaction.{" "}
+            <button
+              onClick={onDisconnect}
+              className="underline decoration-dotted underline-offset-2 transition-colors hover:text-muted"
+              title="Ends this session and unplugs the wallet. Access granted on chain stays until removed there."
+            >
+              Disconnect wallet
+            </button>
           </p>
         </section>
       )}

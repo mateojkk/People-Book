@@ -45,6 +45,63 @@ import { computeNudges } from "./ranking.js";
 import { collapseById, isLive } from "../shared/memory-codec.js";
 import type { PeopleBookStore } from "../shared/store.js";
 import type { MemoryCandidate, Nudge, PersonMemory } from "../shared/types.js";
+
+/**
+ * Splits candidates into promise completions versus new memories.
+ *
+ * A candidate that names a real open promise via fulfillsPromiseId revises that
+ * promise to kept. Everything else follows the existing dedupe path. Pure, so it
+ * is asserted directly: the wiring (revise vs remember) is the thing that was
+ * missing, and it must not depend on a model to verify.
+ *
+ * Rules, in order:
+ * 1. Below threshold: dropped, as before. An uncertain completion is not a
+ *    completion.
+ * 2. fulfillsPromiseId names a live open promise: revise it. The candidate's own
+ *    text is not filed separately -- that is the duplication this exists to stop.
+ * 3. fulfillsPromiseId names nothing, or something already closed: ignored as a
+ *    link, and the candidate falls through to the normal path. A wrong id must
+ *    not lose the memory.
+ * 4. Otherwise: the saidAlready dedupe, unchanged.
+ */
+export function resolveWrites(
+  memories: readonly PersonMemory[],
+  candidates: readonly MemoryCandidate[],
+  opts: {
+    confirmThreshold: number;
+    key: (person: string, text: string) => string;
+    saidAlready: Set<string>;
+  },
+): { revisions: { existing: PersonMemory; candidate: MemoryCandidate }[]; writable: MemoryCandidate[] } {
+  const byId = new Map(memories.map((m) => [m.id, m]));
+  const revisions: { existing: PersonMemory; candidate: MemoryCandidate }[] = [];
+  const writable: MemoryCandidate[] = [];
+
+  for (const candidate of candidates) {
+    if (candidate.confidence < opts.confirmThreshold) continue;
+
+    const target = candidate.fulfillsPromiseId ? byId.get(candidate.fulfillsPromiseId) : undefined;
+    if (
+      target &&
+      target.type === "promise" &&
+      target.status === "open" &&
+      target.deleted !== true
+    ) {
+      revisions.push({ existing: target, candidate });
+      // The promise text is now accounted for: a later candidate with the same
+      // words must not file a duplicate of what was just closed.
+      opts.saidAlready.add(opts.key(target.person, target.text));
+      continue;
+    }
+
+    const candidateKey = opts.key(candidate.person, candidate.text);
+    if (opts.saidAlready.has(candidateKey)) continue;
+    opts.saidAlready.add(candidateKey);
+    writable.push(candidate);
+  }
+
+  return { revisions, writable };
+}
 import { CONFIRM_THRESHOLD } from "../shared/types.js";
 
 
@@ -114,7 +171,10 @@ export async function takeTurn(
 
   // ── 1. Notice and write ─────────────────────────────────────────────────────
   hooks.onPhase?.("extracting");
-  const extraction = await capture(message, known, history);
+  const openPromises = memories
+    .filter((m) => m.type === "promise" && m.status === "open")
+    .map((m) => ({ id: m.id, person: m.person, text: m.text }));
+  const extraction = await capture(message, known, history, openPromises);
 
   const saved: SavedMemory[] = [];
 
@@ -139,16 +199,21 @@ export async function takeTurn(
   // other -- three sequential network waits where one concurrent batch is the
   // same total time. allSettled rather than all, so one failed write still does
   // not cost the turn.
-  const writable = extraction.candidates.filter((candidate) => {
-    if (candidate.confidence < CONFIRM_THRESHOLD) return false;
-    const candidateKey = key(candidate.person, candidate.text);
-    if (saidAlready.has(candidateKey)) return false;
-    saidAlready.add(candidateKey);
-    return true;
+  const { revisions, writable } = resolveWrites(memories, extraction.candidates, {
+    confirmThreshold: CONFIRM_THRESHOLD,
+    key,
+    saidAlready,
   });
   // Only announced when there is something to write. Most messages produce
   // nothing, and a status for a phase that did not happen misattributes the wait.
-  if (writable.length) hooks.onPhase?.("writing");
+  // A revision counts: closing a promise is a relayer round trip like any write.
+  if (writable.length || revisions.length) hooks.onPhase?.("writing");
+  const closes = revisions.map(({ existing }) =>
+    store
+      .revise(existing, { status: "kept" })
+      .then((written) => ({ ok: true as const, written }))
+      .catch((error: unknown) => ({ ok: false as const, error })),
+  );
   const writes = writable
     .map((candidate) =>
       store
@@ -180,7 +245,7 @@ export async function takeTurn(
         .catch((error: unknown) => ({ ok: false as const, error })),
     );
 
-  const settled = writes.length ? await Promise.allSettled(writes) : [];
+  const settled = writes.length || closes.length ? await Promise.allSettled([...closes, ...writes]) : [];
   const fresh: PersonMemory[] = [];
   for (const result of settled) {
     if (result.status === "rejected") continue;

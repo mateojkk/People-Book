@@ -246,6 +246,15 @@ export interface MemoryCandidate {
   confidence: number;
   /** True when the user explicitly asked for this, so no confirmation needed. */
   explicit: boolean;
+  /**
+   * The id of an open promise this candidate completes ("I called Maya"
+   * fulfills "Call Maya"). Set by the model, verified by code: takeTurn only
+   * honours it when it names a real open promise, otherwise it is ignored and
+   * the candidate is filed as new. Without this, reporting a completion files a
+   * second memory while the promise stays open forever -- the app then both
+   * nags about something done and cannot say it was done.
+   */
+  fulfillsPromiseId?: string;
 }
 
 /** The model is never asked to invent; it is asked to extract. */
