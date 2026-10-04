@@ -23,6 +23,9 @@ g.localStorage = localStorageStub;
 const { openBook, withBook, prepareDelegate, currentDelegate, BookError } = await import(
   "../src/lib/book.ts"
 );
+// Type-only, because the dynamic import above exists to run after the browser
+// globals are stubbed, and a static import would execute the module too early.
+type BookErrorT = InstanceType<typeof BookError>;
 
 let failures = 0;
 let checks = 0;
@@ -49,7 +52,7 @@ section("an unauthorised browser is told to authorise, not to retry");
   }
   check("it throws", thrown instanceof Error);
   check("with a kind the UI can branch on", thrown instanceof BookError && thrown.kind === "no_delegate",
-    String((thrown as BookError)?.kind));
+    String((thrown as BookErrorT)?.kind));
   check("and says a signature is what is missing",
     /signature|authoris|authoriz/i.test(String((thrown as Error)?.message)),
     String((thrown as Error)?.message).slice(0, 60));
@@ -93,8 +96,8 @@ section("a refused grant is reported as needing authorisation");
     thrown = e;
   }
   check("it becomes a no_delegate error", thrown instanceof BookError && thrown.kind === "no_delegate",
-    String((thrown as BookError)?.kind));
-  check("the original is kept as the cause", (thrown as BookError)?.cause === unauthorised);
+    String((thrown as BookErrorT)?.kind));
+  check("the original is kept as the cause", (thrown as BookErrorT)?.cause === unauthorised);
   check("the message names revocation as the likely cause",
     /revok/i.test(String((thrown as Error)?.message)), String((thrown as Error)?.message).slice(0, 70));
 }
