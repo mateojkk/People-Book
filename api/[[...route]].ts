@@ -1,56 +1,108 @@
 /**
- * The serverless entry point.
+ * Serverless entry point — DIAGNOSTIC BUILD.
  *
- * ── Why this file is three lines of logic and a lot of comment ───────────────
+ * This is a probe, not the app. It imports nothing from the codebase, so whatever
+ * is breaking the real entry cannot break this one, and it reports what Vercel
+ * actually uploaded.
  *
- * The previous deployment answered every /api request with
+ * ── Why a probe and not more guessing ────────────────────────────────────────
  *
- *   Error Code: FUNCTION_INVOCATION_FAILED
- *   Execution Duration: 190ms
+ * The deployment has failed three ways now, and each failure hid the next:
  *
- * and no stack trace. A temporary wrapper that loaded the implementation lazily
- * turned that into the actual cause:
+ *   1. FUNCTION_INVOCATION_FAILED, no body. Cause: `api/_lib/` was `_`-prefixed,
+ *      which stops Vercel routing those files as functions *and* stops it
+ *      uploading them. Found by a wrapper that loaded the app lazily, which
+ *      reported: Cannot find module '/var/task/api/_lib/app.ts'.
  *
- *   Cannot find module '/var/task/api/_lib/app.ts'
+ *   2. Moved the implementation to `server/`, outside anything Vercel scans.
+ *      Switched to a static import. Still FUNCTION_INVOCATION_FAILED, no body —
+ *      and a static import failure happens before any of my code runs, so the
+ *      wrapper could not catch it. The diagnosis mechanism and the thing being
+ *      diagnosed fought each other.
  *
- * Vercel omits `_`-prefixed files from the function upload. They are not turned
- * into routes -- which is what the underscore was for, keeping twelve library
- * files from becoming twelve serverless functions -- but they are not uploaded
- * either. So the function had no implementation at all.
+ * So this asks the two questions that distinguish what is left:
  *
- * Hence `server/`. The implementation sits outside the directory Vercel scans for
- * routes, so nothing needs the underscore trick, nothing is dropped from the
- * bundle, and `api/` contains exactly one file: this entry point.
+ *   - Are the `server/` files in the upload at all?
+ *   - If they are, are they emitted as `.js` while the import says `.ts`?
  *
- * That leaves exactly one function, which is the point of the whole arrangement.
+ * Both are answerable by listing the directory rather than by reasoning about
+ * Vercel's compiler, which is what has been failing.
  *
- * The request-level try/catch stays. It is not what found this bug, but it turns
- * the next class of failure -- something thrown that Hono does not handle -- into
- * a body that names the error instead of a platform code that names nothing.
+ * DELETE THIS once the real entry works.
  */
 
-import { app } from "../server/app.ts";
+import { readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 
-function report(error: unknown): Response {
-  const err = error instanceof Error ? error : new Error(String(error));
-  return new Response(
-    JSON.stringify({
-      error: "request_failed",
-      message: err.message || "(no message)",
-      name: err.name,
-      stack: (err.stack ?? "").split("\n").slice(0, 12).join("\n"),
-      node: process.version,
-    }),
-    { status: 500, headers: { "content-type": "application/json" } },
-  );
+function walk(dir: string, depth = 0): string[] {
+  if (depth > 4) return [];
+  let entries: string[] = [];
+  try {
+    entries = readdirSync(dir);
+  } catch {
+    return [];
+  }
+  const out: string[] = [];
+  for (const name of entries) {
+    const full = join(dir, name);
+    let isDir = false;
+    try {
+      isDir = statSync(full).isDirectory();
+    } catch {
+      continue;
+    }
+    if (isDir) out.push(...walk(full, depth + 1));
+    else out.push(full.replace("/var/task", ""));
+  }
+  return out;
 }
 
 export default {
-  async fetch(request: Request): Promise<Response> {
+  async fetch(): Promise<Response> {
+    const files = walk("/var/task");
+    const interesting = files.filter(
+      (f) =>
+        f.includes("server/") ||
+        f.includes("api/") ||
+        f.endsWith("package.json") ||
+        f.includes("routes") ||
+        f.includes("vc-config"),
+    );
+
+    let probe = "read ok";
     try {
-      return await app.fetch(request);
+      const spec = "../server/app.ts";
+      await import(spec);
     } catch (error) {
-      return report(error);
+      probe = `${(error as { code?: string }).code ?? "?"}: ${
+        error instanceof Error ? error.message.split("\n")[0] : String(error)
+      }`;
     }
+
+    let probeNoExt = "read ok";
+    try {
+      await import("../server/app");
+    } catch (error) {
+      probeNoExt = `${(error as { code?: string }).code ?? "?"}: ${
+        error instanceof Error ? error.message.split("\n")[0] : String(error)
+      }`;
+    }
+
+    return new Response(
+      JSON.stringify(
+        {
+          node: process.version,
+          totalFiles: files.length,
+          serverJsExists: files.some((f) => f.endsWith("server/app.js")),
+          serverTsExists: files.some((f) => f.endsWith("server/app.ts")),
+          importWithTsExt: probe,
+          importWithoutExt: probeNoExt,
+          files: interesting.slice(0, 40),
+        },
+        null,
+        2,
+      ),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
   },
 };
