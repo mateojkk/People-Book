@@ -9,7 +9,7 @@
  */
 
 import { takeTurn, worthSaving, duplicateKey } from "../api/_lib/chat.ts";
-import type { PeopleBookStore } from "../api/_lib/store.ts";
+import type { PeopleBookStore } from "../shared/store.ts";
 import { makeMemory, type MakeMemoryInput } from "../shared/memory-codec.ts";
 import type { MemoryCandidate, PersonMemory } from "../shared/types.ts";
 import { CONFIRM_THRESHOLD } from "../shared/types.ts";

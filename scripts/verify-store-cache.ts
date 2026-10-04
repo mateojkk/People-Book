@@ -10,7 +10,7 @@
  * Nothing throws when this breaks. It looks like latency, which is why it got
  * reported as "saving takes forever" rather than as a stale read.
  */
-import { PeopleBookStore } from "../api/_lib/store.ts";
+import { PeopleBookStore } from "../shared/store.ts";
 
 let failures = 0;
 let checks = 0;
@@ -49,12 +49,15 @@ function fakeClient() {
 }
 
 function buildStore(client: any) {
-  // The store reaches its client through a private accessor; replacing it is the
-  // only way to test this without a live relayer, and it is exactly the seam the
-  // bug lived in.
-  const store = new PeopleBookStore({ accountId: "acct_test", namespace: "book" });
-  (store as unknown as { get: () => unknown }).get = () => client;
-  return store;
+  // createClient is the supported seam. This used to overwrite the store's private
+  // get() accessor, which worked only because the test was willing to reach into
+  // privates -- and it is the same coupling that let the store build its own client
+  // from an env key in the first place.
+  return new PeopleBookStore({
+    accountId: "acct_test",
+    namespace: "book",
+    createClient: () => client,
+  });
 }
 
 section("a write is visible to the very next read");

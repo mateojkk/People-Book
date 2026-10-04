@@ -19,8 +19,8 @@ import { capture } from "./_lib/capture.ts";
 import { takeTurn } from "./_lib/chat.ts";
 import { tasksFor, composeNotice, noticeHistory, isTaskMemory } from "./_lib/tasks.ts";
 import { computePatterns } from "./_lib/patterns.ts";
-import { PeopleBookStore, MemoryNotFoundError } from "./_lib/store.ts";
-import { isConfigError, isWriteError, NAMESPACE, RECALL_LIMIT } from "./_lib/memwal.ts";
+import { PeopleBookStore, MemoryNotFoundError } from "../shared/store.ts";
+import { isConfigError, isWriteError, NAMESPACE, RECALL_LIMIT, getClient, dropClient } from "./_lib/memwal.ts";
 import {
   delegateIsRegistered,
   deployment,
@@ -122,7 +122,18 @@ async function resolveStore(c: Context): Promise<
     };
   }
 
-  return { store: new PeopleBookStore({ accountId, namespace: NAMESPACE }), address: session.address };
+  return {
+    // Transitional: the browser owns the key now, so these read/write routes go
+    // away entirely in the final stage. Until then they still need a client, and
+    // this is the last place one is built from an environment variable.
+    store: new PeopleBookStore({
+      accountId,
+      namespace: NAMESPACE,
+      createClient: (id, ns) => getClient(id, ns),
+      onReset: dropClient,
+    }),
+    address: session.address,
+  };
 }
 
 function toErrorResponse(c: Context, error: unknown): Response {

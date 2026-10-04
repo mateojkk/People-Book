@@ -14,7 +14,7 @@
  * Runs with no network, no key and no wallet.
  */
 
-import { PeopleBookStore } from "../api/_lib/store.ts";
+import { PeopleBookStore } from "../shared/store.ts";
 import { NAMESPACE, NAMESPACE_PREFIX, assertAppNamespace } from "../api/_lib/memwal.ts";
 
 let failures = 0;
@@ -91,12 +91,19 @@ for (const namespace of FOREIGN) {
 // ─── The store cannot be pointed at someone else's memory ───────────────────
 section("the store refuses a foreign namespace at construction");
 
+// Never called. These assertions are about construction, and a namespace refusal has
+// to happen before any client would be built — so a factory that threw on call
+// would make the assertion pass for entirely the wrong reason.
+const explodingClient = () => {
+  throw new Error("the client factory should not be reached in this test");
+};
+
 for (const namespace of ["nue-memory", "thesaintszn@gmail.com", "default"]) {
   let refused = false;
   try {
-    // Constructing is enough: the client is created eagerly, and every read and
-    // write the store performs inherits that namespace.
-    const store = new PeopleBookStore({ accountId: "0x0", namespace });
+    // Constructing is enough: the namespace is validated in the constructor, and
+    // every read and write the store performs inherits it.
+    const store = new PeopleBookStore({ accountId: "0x0", namespace, createClient: explodingClient });
     void store;
   } catch {
     refused = true;
@@ -106,7 +113,7 @@ for (const namespace of ["nue-memory", "thesaintszn@gmail.com", "default"]) {
 
 let appStoreOk = true;
 try {
-  const store = new PeopleBookStore({ accountId: "0x0", namespace: NAMESPACE });
+  const store = new PeopleBookStore({ accountId: "0x0", namespace: NAMESPACE, createClient: explodingClient });
   void store;
 } catch (error) {
   appStoreOk = false;

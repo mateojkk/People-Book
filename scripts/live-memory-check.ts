@@ -12,7 +12,8 @@
  * Needs MEMWAL_PRIVATE_KEY / MEMWAL_ACCOUNT_ID for an account you own.
  */
 
-import { PeopleBookStore } from "../api/_lib/store.ts";
+import { PeopleBookStore } from "../shared/store.ts";
+import { getClient } from "../api/_lib/memwal.ts";
 import { computeNudges } from "../api/_lib/ranking.ts";
 import { demoCast } from "../shared/demo-cast.ts";
 import { SELF } from "../shared/types.ts";
@@ -39,7 +40,13 @@ function check(name: string, ok: boolean, detail?: unknown) {
 }
 
 async function main() {
-  const store = new PeopleBookStore({ accountId: account, namespace: NS });
+  // Transitional: this script still runs server-side and still uses the env key.
+  // It goes away with the key.
+  const store = new PeopleBookStore({
+    accountId: account,
+    namespace: NS,
+    createClient: (id, ns) => getClient(id, ns),
+  });
 
   console.log(`\nrelayer: ${process.env.MEMWAL_SERVER_URL ?? "https://relayer.memory.walrus.xyz"}`);
   const health = await store.health();

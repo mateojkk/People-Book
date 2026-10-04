@@ -33,14 +33,12 @@ import {
   parseMemory,
   reviseMemory,
   serializeMemory,
-} from "../../shared/memory-codec.ts";
-import type { PersonMemory } from "../../shared/types.ts";
+} from "./memory-codec.ts";
+import type { PersonMemory } from "./types.ts";
 import {
   NAMESPACE,
   RECALL_LIMIT,
   assertAppNamespace,
-  dropClient,
-  getClient,
   withWriteRetry,
 } from "./memwal.ts";
 
@@ -144,6 +142,23 @@ const enumerationsInFlight = new Map<string, Promise<Enumeration>>();
 export interface StoreOptions {
   accountId: string;
   namespace?: string;
+  /**
+   * Builds the MemWal client this store reads and writes through.
+   *
+   * Required, and injected rather than constructed here, because the key that
+   * client signs with belongs to whoever is making the request. In the browser
+   * that is a keypair generated on the user's machine and held in localStorage;
+   * the store has no business knowing whose it is. Constructing it here is exactly
+   * how a single shared server key ended up with authority over every account.
+   *
+   * Called once and memoised. Return a fresh client per call, not a shared one.
+   */
+  createClient: (accountId: string, namespace: string) => MemWal;
+  /**
+   * Optional hook run by reset(). The server had a process-wide client cache to
+   * drop; the browser has no cache, so this is a no-op unless a caller needs it.
+   */
+  onReset?: (accountId: string, namespace: string) => void;
 }
 
 export class MemoryNotFoundError extends Error {
@@ -157,25 +172,29 @@ export class MemoryNotFoundError extends Error {
 export class PeopleBookStore {
   private readonly accountId: string;
   private readonly namespace: string;
+  private readonly createClient: StoreOptions["createClient"];
+  private readonly onReset: StoreOptions["onReset"];
   private client: MemWal | null = null;
 
   constructor(options: StoreOptions) {
     this.accountId = options.accountId;
-    // Validated here, at construction, rather than left to the first read.
-    // getClient() also checks, but that is lazy: a misconfigured store would
-    // build fine and only fail on the first query, which is late enough for the
-    // failure to look like a relayer problem rather than a wiring mistake.
+    // Validated here, at construction, rather than left to the first read: a
+    // misconfigured store would otherwise build fine and only fail on the first
+    // query, which is late enough for the failure to look like a relayer problem
+    // rather than a wiring mistake.
     this.namespace = assertAppNamespace(options.namespace ?? NAMESPACE);
+    this.createClient = options.createClient;
+    this.onReset = options.onReset;
   }
 
   private get(): MemWal {
-    if (!this.client) this.client = getClient(this.accountId, this.namespace);
+    if (!this.client) this.client = this.createClient(this.accountId, this.namespace);
     return this.client;
   }
 
   /** Drops a wedged client so the next call rebuilds it. */
   reset(): void {
-    dropClient(this.accountId, this.namespace);
+    this.onReset?.(this.accountId, this.namespace);
     this.client = null;
   }
 

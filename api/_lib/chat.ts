@@ -43,7 +43,7 @@ import { computePatterns, type Pattern } from "./patterns.ts";
 import { groqFetch } from "./groq.ts";
 import { computeNudges } from "./ranking.ts";
 import { collapseById, isLive } from "../../shared/memory-codec.ts";
-import type { PeopleBookStore } from "./store.ts";
+import type { PeopleBookStore } from "../../shared/store.ts";
 import type { MemoryCandidate, Nudge, PersonMemory } from "../../shared/types.ts";
 import { CONFIRM_THRESHOLD } from "../../shared/types.ts";
 
