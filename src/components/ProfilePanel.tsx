@@ -54,6 +54,7 @@ export function ProfilePanel({ onDisconnect }: { onDisconnect: () => void }) {
   const [avatar, setAvatar] = useState<string | null>(null);
   const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
+  const [needsGrant, setNeedsGrant] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -61,6 +62,12 @@ export function ProfilePanel({ onDisconnect }: { onDisconnect: () => void }) {
       setProfile(data.profile);
       setDraft(data.profile);
     } catch (e) {
+      // "revoked" and "no access yet" both mean the same thing from here: the
+      // key this browser relies on is not granted on this account. That is
+      // common when switching wallets. Checked by code, not by matching words
+      // in a message that may be rephrased server-side.
+      const code = (e as { code?: string })?.code;
+      setNeedsGrant(code === "revoked" || code === "no_grant");
       setError(e instanceof Error ? e.message : "Could not load your profile.");
     }
   }, []);
@@ -120,7 +127,28 @@ export function ProfilePanel({ onDisconnect }: { onDisconnect: () => void }) {
     reader.readAsDataURL(file);
   };
 
-  if (error && !profile) return <p className="text-sm text-stop">{error}</p>;
+  // A rejected key is not a dead end. It means this account never granted access,
+  // or the grant was revoked on chain -- both common when switching wallets, since
+  // the session can point at an account the current key was never granted into.
+  // The fix is one signature in the setup flow, so offer the way back instead of
+  // a message that reads as broken.
+  if (error && !profile) {
+    if (!needsGrant) return <p className="text-sm text-stop">{error}</p>;
+    return (
+      <div>
+        <p className="text-sm leading-6 text-muted">
+          This browser cannot open that account yet. It needs one signature to
+          grant access -- revocable on chain at any time.
+        </p>
+        <a
+          href="/signin"
+          className="mt-4 inline-block min-h-11 rounded-lg bg-accent px-5 py-3 text-[13px] font-bold text-base transition-opacity hover:opacity-90"
+        >
+          Grant access
+        </a>
+      </div>
+    );
+  }
   if (!profile) return <p className="text-sm text-muted">Loading your profile…</p>;
 
   const field = "min-h-11 w-full rounded-lg bg-raised px-3 py-2 text-[13px] text-text outline-none placeholder:text-faint focus-visible:outline-2 focus-visible:outline-accent";
