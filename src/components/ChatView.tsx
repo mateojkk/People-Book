@@ -190,7 +190,9 @@ export function ChatView({ onOpenBook }: { onOpenBook?: () => void }) {
         // Every version with a line of copy in it read as a landing page trying to
         // sell the product, and every set of examples put words in the user's mouth.
         <div className="flex min-h-0 flex-1 flex-col justify-center px-5 py-10">
-          <div className="w-full max-w-thread">
+          {/* mx-auto, matching the message list below: without it the empty-state
+              input sits left while everything else centers, which reads as broken. */}
+          <div className="mx-auto w-full max-w-thread">
             {/* It speaks first, when there is something true to say. Deterministic,
                 grounded in the ranking engine, and silent when nothing is due. */}
             <Opening />
