@@ -12,8 +12,8 @@
  * Needs MEMWAL_PRIVATE_KEY / MEMWAL_ACCOUNT_ID for an account you own.
  */
 
-import { PeopleBookStore } from "../api/lib/store.ts";
-import { computeNudges } from "../api/lib/ranking.ts";
+import { PeopleBookStore } from "../api/_lib/store.ts";
+import { computeNudges } from "../api/_lib/ranking.ts";
 import { demoCast } from "../shared/demo-cast.ts";
 import { SELF } from "../shared/types.ts";
 

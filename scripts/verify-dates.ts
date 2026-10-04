@@ -13,7 +13,7 @@
  * 429s. Nobody had called the model at all.
  */
 
-import { recurringDate, monthForDayOnly, isFullMonthDay } from "../api/lib/dates.ts";
+import { recurringDate, monthForDayOnly, isFullMonthDay } from "../api/_lib/dates.ts";
 
 let failures = 0;
 let checks = 0;

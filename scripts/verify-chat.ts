@@ -8,8 +8,8 @@
  * a network to verify.
  */
 
-import { takeTurn, worthSaving, duplicateKey } from "../api/lib/chat.ts";
-import type { PeopleBookStore } from "../api/lib/store.ts";
+import { takeTurn, worthSaving, duplicateKey } from "../api/_lib/chat.ts";
+import type { PeopleBookStore } from "../api/_lib/store.ts";
 import { makeMemory, type MakeMemoryInput } from "../shared/memory-codec.ts";
 import type { MemoryCandidate, PersonMemory } from "../shared/types.ts";
 import { CONFIRM_THRESHOLD } from "../shared/types.ts";
@@ -242,7 +242,7 @@ section("undo is a tombstone, not a deletion from history");
 // ── Recurring dates ──────────────────────────────────────────────────────────
 section("a birthday can actually be reminded about");
 
-const { nextOccurrence, effectiveDueAt, computeNudges } = await import("../api/lib/ranking.ts");
+const { nextOccurrence, effectiveDueAt, computeNudges } = await import("../api/_lib/ranking.ts");
 
 check("an anniversary ahead of today resolves to this year", nextOccurrence("12-25", new Date("2026-10-01T00:00:00Z")) === "2026-12-25", nextOccurrence("12-25", new Date("2026-10-01T00:00:00Z")));
 check("an anniversary already past rolls into next year", nextOccurrence("01-05", new Date("2026-10-01T00:00:00Z")) === "2027-01-05");
@@ -344,7 +344,7 @@ section("undoing then repeating yourself works");
 section("a follow-up can refer back to an earlier turn");
 
 {
-  const { capture } = await import("../api/lib/capture.ts");
+  const { capture } = await import("../api/_lib/capture.ts");
   const history = [
     { role: "you" as const, text: "Mara's birthday is the 14th" },
     { role: "assistant" as const, text: "Noted." },
@@ -434,7 +434,7 @@ section("the reply arrives as it is written, not all at once");
   // assertion fails whenever Groq is rate-limited -- which it was, repeatedly,
   // within a minute of testing -- and a test that fails for someone else's reasons
   // is worse than no test.
-  const { readStreamed } = await import("../api/lib/chat.ts");
+  const { readStreamed } = await import("../api/_lib/chat.ts");
 
   const sse = (frames: string[]) =>
     new ReadableStream<Uint8Array>({

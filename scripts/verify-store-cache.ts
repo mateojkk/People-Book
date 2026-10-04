@@ -10,7 +10,7 @@
  * Nothing throws when this breaks. It looks like latency, which is why it got
  * reported as "saving takes forever" rather than as a stale read.
  */
-import { PeopleBookStore } from "../api/lib/store.ts";
+import { PeopleBookStore } from "../api/_lib/store.ts";
 
 let failures = 0;
 let checks = 0;

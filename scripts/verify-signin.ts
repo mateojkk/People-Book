@@ -27,7 +27,7 @@ import { isValidPersonalMessageSignature } from "@mysten/sui/verify";
 import { SuiGrpcClient } from "@mysten/sui/grpc";
 import { bcs } from "@mysten/bcs";
 import { readFileSync } from "node:fs";
-import { CHALLENGE_TEXT, createSession, readSession } from "../api/lib/session.ts";
+import { CHALLENGE_TEXT, createSession, readSession } from "../api/_lib/session.ts";
 
 const RPC = process.env.SUI_RPC_URL || "https://fullnode.mainnet.sui.io:443";
 const API = process.env.CHECK_API_URL || "http://127.0.0.1:8787";
@@ -203,7 +203,7 @@ check("the plain verifier refuses a zkLogin signature", !(await isValidPersonalM
 // remove.
 // Comments are stripped before the greps below, because the code deliberately
 // NAMES the hand-rolled approach it no longer uses in order to explain why.
-const sessionSource = readFileSync(new URL("../api/lib/session.ts", import.meta.url), "utf8")
+const sessionSource = readFileSync(new URL("../api/_lib/session.ts", import.meta.url), "utf8")
   .split("\n")
   .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
   .join("\n");
@@ -290,8 +290,8 @@ check("undefined is refused", (await readSession(undefined)) === null);
 // answers it on any device. Live, against mainnet.
 section("an account is resolved from the address alone, off the public registry");
 
-const { findAccountId } = await import("../api/lib/account.ts");
-const { deployment } = await import("../api/lib/account.ts");
+const { findAccountId } = await import("../api/_lib/account.ts");
+const { deployment } = await import("../api/_lib/account.ts");
 
 // Two real owner/account pairs read out of the registry's own dynamic-field list.
 const KNOWN: [string, string][] = [
@@ -408,7 +408,7 @@ check("undo is refused cleanly, not a crash", undoUnknown.status === 403, undoUn
 // is roughly a coin toss and has nothing to do with the bug being guarded.
 section("who a memory may be attributed to");
 
-const { isAttributable } = await import("../api/lib/capture.ts");
+const { isAttributable } = await import("../api/_lib/capture.ts");
 
 const known = new Set(["ravi"]);
 check("someone already in the book is allowed", isAttributable("Ravi", known, ""));
