@@ -124,9 +124,24 @@ check("store accepts its own namespace", appStoreOk);
 // ─── No route takes a namespace from the request ─────────────────────────────
 section("no route accepts a namespace from the request");
 
-const routeSource = await import("node:fs").then((fs) =>
-  fs.readFileSync(new URL("../api/[[...route]].ts", import.meta.url), "utf8"),
-);
+// Every file under api/, not one hardcoded path. The route file moved to
+// api/_lib/app.ts when the entry point became a fetch wrapper, and this assertion
+// silently started reporting "found: 0" — which read as a pass-adjacent curiosity
+// rather than "I am looking in the wrong place". Scanning the tree means the next
+// move cannot quietly void the check.
+const fs = await import("node:fs");
+const path = await import("node:path");
+function readApiTree(dir: string): string {
+  return fs
+    .readdirSync(dir, { withFileTypes: true })
+    .map((entry) => {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) return readApiTree(full);
+      return entry.name.endsWith(".ts") ? fs.readFileSync(full, "utf8") : "";
+    })
+    .join("\n");
+}
+const routeSource = readApiTree(new URL("../api", import.meta.url).pathname);
 
 // Any of these would mean a caller could choose what to read.
 const FORBIDDEN_PATTERNS: [string, RegExp][] = [

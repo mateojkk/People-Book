@@ -324,7 +324,9 @@ check("the registry being read is a real AccountRegistry", /^0x[0-9a-f]{64}$/.te
 // catches that class of lie.
 section("the account routes the setup screen calls are registered");
 
-const routes = (await import("../api/[[...route]].ts")).default;
+// The Hono app directly, so app.request() keeps working. The serverless
+// entry is a thin fetch wrapper and has no .request test helper.
+const routes = (await import("../api/_lib/app.ts")).app;
 const REAL_OWNER = "0x4a9ac431b20ec2a3d3dbd4cbcaafd3eb0e64267d2085adc0149ca78436f04437";
 const REAL_ACCOUNT = "0x7a7e59fd47072f7cab58b45591e8865c7b4896a9ae92a7e22b093e2bce66f97b";
 
