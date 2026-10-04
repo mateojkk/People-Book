@@ -55,6 +55,7 @@ export function ProfilePanel({ onDisconnect }: { onDisconnect: () => void }) {
   const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
   const [needsGrant, setNeedsGrant] = useState(false);
+  const [misconfigured, setMisconfigured] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -67,6 +68,11 @@ export function ProfilePanel({ onDisconnect }: { onDisconnect: () => void }) {
       // common when switching wallets. Checked by code, not by matching words
       // in a message that may be rephrased server-side.
       const code = (e as { code?: string })?.code;
+      // account_config_missing means the deployment has no delegate key at all.
+      // Offering "Grant access" for that would send the user to sign something
+      // that can never succeed, which is how a missing env var became a report
+      // of a revoked key. Say whose problem it is instead.
+      setMisconfigured(code === "account_config_missing");
       setNeedsGrant(code === "revoked" || code === "no_grant");
       setError(e instanceof Error ? e.message : "Could not load your profile.");
     }
@@ -133,6 +139,13 @@ export function ProfilePanel({ onDisconnect }: { onDisconnect: () => void }) {
   // The fix is one signature in the setup flow, so offer the way back instead of
   // a message that reads as broken.
   if (error && !profile) {
+    if (misconfigured)
+      return (
+        <p className="text-sm leading-6 text-stop">
+          This app is not set up to write yet. Nothing is wrong with your account
+          -- tell whoever deployed it their delegate key is missing.
+        </p>
+      );
     if (!needsGrant) return <p className="text-sm text-stop">{error}</p>;
     return (
       <div>

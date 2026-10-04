@@ -22,6 +22,7 @@ import { computePatterns } from "./patterns.js";
 import { PeopleBookStore, MemoryNotFoundError } from "../shared/store.js";
 import { isConfigError, isWriteError, NAMESPACE, RECALL_LIMIT, getClient, dropClient } from "./memwal.js";
 import {
+  AccountConfigError,
   delegateIsRegistered,
   deployment,
   markDelegateRegistered,
@@ -139,6 +140,22 @@ async function resolveStore(c: Context): Promise<
 function toErrorResponse(c: Context, error: unknown): Response {
   if (isConfigError(error)) {
     return c.json({ error: error.code, message: error.message }, 503);
+  }
+  // A missing server key must never wear the revoked mask. AccountConfigError is
+  // thrown when MEMWAL_DELEGATE_KEY is unset, and its message names the variable
+  // -- which contains the word "delegate", matching looksLikeRevoked below. So an
+  // unconfigured deployment told every user their key had been removed on chain,
+  // sending them to re-grant something that could never succeed. Caught here,
+  // before the regex, with a code the client can distinguish.
+  if (error instanceof AccountConfigError) {
+    return c.json(
+      {
+        error: error.code,
+        message:
+          "This app is not configured to write yet: its delegate key is missing server-side. This is a deployment problem, not your account -- nothing you grant here can fix it.",
+      },
+      503,
+    );
   }
   if (error instanceof SessionConfigError) {
     return c.json({ error: error.code, message: error.message }, 503);
