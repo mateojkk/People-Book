@@ -44,7 +44,13 @@ function knownZones(): string[] {
 
 export function ProfilePanel() {
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [draft, setDraft] = useState<Profile>({});
+  const [draft, setDraftRaw] = useState<Profile>({});
+  // Any edit retires the "Saved." confirmation: it was true of what was there
+  // before the keystroke, and leaving it up would claim the new text is saved too.
+  const setDraft: typeof setDraftRaw = (update) => {
+    setState((s) => (s === "saved" ? "idle" : s));
+    setDraftRaw(update);
+  };
   const [avatar, setAvatar] = useState<string | null>(null);
   const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -80,7 +86,6 @@ export function ProfilePanel() {
         setProfile(data.profile);
       }
       setState("saved");
-      window.setTimeout(() => setState("idle"), 2200);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save that.");
       setState("error");
