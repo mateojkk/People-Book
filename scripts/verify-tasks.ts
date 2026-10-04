@@ -10,7 +10,7 @@
  */
 
 import { relevance, isDecayed, isStalePromise, selectLive, DECAY_FLOOR } from "../api/lib/decay.ts";
-import { tasksFor, composeNotice, noticeHistory } from "../api/lib/tasks.ts";
+import { tasksFor, isTaskMemory, isOutstandingTask, composeNotice, noticeHistory } from "../api/lib/tasks.ts";
 import { makeMemory, type MakeMemoryInput } from "../shared/memory-codec.ts";
 import type { PersonMemory } from "../shared/types.ts";
 
@@ -185,6 +185,38 @@ section("the list is what needs doing, most urgent first");
   ];
   const tasks = tasksFor(memories, NOW);
   check("only open promises and dated events are tasks", tasks.length === 1, tasks.map((t) => t.text));
+}
+
+section("settleable and outstanding are not the same question");
+// Got this wrong in the fixing, which is the only interesting reason to write it
+// down. The settle route asks whether a thing is a task; the list asks whether it
+// needs doing now. Using the first for the second put every kept promise back on
+// it, so "Already sent." showed up as something to do.
+{
+  const open = memory({ person: "Maya", type: "promise", status: "open", text: "Ring her.", confidence: "confirmed" });
+  const kept = memory({ person: "Maya", type: "promise", status: "kept", text: "Already sent.", confidence: "confirmed" });
+  const settled = memory({ person: "Maya", type: "promise", status: "settled", text: "Done already.", confidence: "confirmed" });
+  const dated = memory({ person: "Dev", type: "event", text: "Interview on the 2nd.", dueAt: "2026-10-02", confidence: "confirmed" });
+  const datedSettled = memory({ person: "Ivy", type: "event", text: "Flight on the 3rd.", dueAt: "2026-10-03", status: "settled", confidence: "confirmed" });
+  const trait = memory({ person: "Ana", type: "trait", text: "Vegetarian.", confidence: "confirmed" });
+
+  check("a kept promise is still a task", isTaskMemory(kept));
+  check("but it is not outstanding", !isOutstandingTask(kept));
+  check("a settled promise is still a task", isTaskMemory(settled));
+  check("but it is not outstanding", !isOutstandingTask(settled));
+  check("an open promise is both", isTaskMemory(open) && isOutstandingTask(open));
+  check("a dated event is both", isTaskMemory(dated) && isOutstandingTask(dated));
+
+  // The one that has to hold: nothing on the list can have a button that fails.
+  const listed = tasksFor([open, kept, settled, dated, datedSettled, trait], NOW);
+  const listedIds = listed.map((t) => t.memoryId);
+  check("every listed row is settleable", listed.every((t) => isTaskMemory(
+    [open, kept, settled, dated, datedSettled, trait].find((m) => m.id === t.memoryId)!,
+  )), listed.map((t) => t.text).join(" | "));
+  check("settling a dated event dismisses it", !listedIds.includes(datedSettled.id));
+  check("and the kept promise is off the list", !listedIds.includes(kept.id));
+  check("the trait never appears", !listedIds.includes(trait.id));
+  check("exactly the open promise and the live event are listed", listed.length === 2, listed.map((t) => t.text).join(" | "));
 }
 
 {

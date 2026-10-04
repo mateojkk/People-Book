@@ -30,7 +30,8 @@
     "verify:opening": "tsx scripts/verify-opening.ts",
     "verify:store": "tsx scripts/verify-store-cache.ts",
     "verify:build": "node scripts/verify-build.mjs",
-    "verify:dates": "tsx scripts/verify-dates.ts"
+    "verify:dates": "tsx scripts/verify-dates.ts",
+    "verify:deploy": "node scripts/verify-deploy.mjs"
   },
   "dependencies": {
     "@fontsource/jetbrains-mono": "^5.3.0",

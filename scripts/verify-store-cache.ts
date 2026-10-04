@@ -137,6 +137,26 @@ section("history shares the ledger's enumeration");
   check("three concurrent reads cost one enumeration", client.recalls === before, `${client.recalls} vs ${before}`);
 }
 
+section("getById is cached, and still sees tombstones");
+// Both matter, and taking one without the other was the bug. Reading through the
+// cache hides tombstones; reading the raw worker to avoid that bypasses the cache
+// and turns every lookup into a full relayer enumeration -- a task settle went to
+// 9.4 seconds that way.
+{
+  const client = fakeClient();
+  const store = buildStore(client) as any;
+  const written = await store.remember({ person: "Maya", type: "trait", text: "vegetarian", confidence: "confirmed" });
+  await store.listLive();               // warm the cache
+  const before = client.recalls;
+  await store.getById(written.id);
+  await store.getById(written.id);
+  await store.getById(written.id);
+  check("three lookups cost no extra enumeration", client.recalls === before, `${client.recalls} vs ${before}`);
+
+  await store.forget(written.id);
+  check("and a tombstone is still findable afterwards", (await store.getById(written.id))?.deleted === true);
+}
+
 section("the cache is still a cache");
 {
   // Invalidating on write must not mean re-enumerating on every read, or the fix

@@ -1,0 +1,28 @@
+# What Vercel uploads, and what it must not.
+#
+# The important line is .env. It is gitignored, so it is not in the repository --
+# but Vercel uploads the *directory*, not the git tree, so a local .env full of
+# real keys would be shipped to the build. VITE_-prefixed values in it would then
+# be inlined into the client bundle, which is the difference between a private key
+# and a published one. Excluding the directory is the only thing that guarantees it.
+
+.env
+.env.*
+!.env.example
+
+node_modules
+dist
+.vercel
+
+# Not needed to build or run, and together they are a third of the upload.
+scripts
+tests
+*.log
+
+# Working notes. Worth keeping in git, not worth shipping to a build.
+RULES.md
+
+# Screenshots and scratch output from local verification.
+shots
+*.png
+!src/assets/*.png

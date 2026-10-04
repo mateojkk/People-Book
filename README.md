@@ -547,3 +547,52 @@ relayer, which embeds it before storing. So there is no second model provider to
 configure, no embedding key to leak, and one fewer party that ever sees your
 memory. If you ever want embeddings computed client-side instead,
 `MemWalManual` supports it — but the default needs nothing from you.
+
+## Deploying to Vercel
+
+The repo is a Vite app plus one serverless function (`api/[[...route]].ts`). It
+deploys as-is; nothing here is deploy-specific beyond `vercel.json`.
+
+```bash
+npm i -g vercel
+vercel link
+vercel env pull .env.local     # or set them in the dashboard
+vercel deploy --prod
+npm run verify:deploy https://<your-domain>
+```
+
+### Environment
+
+`GROQ_API_KEY`, `SESSION_SECRET` (`openssl rand -hex 32`), `MEMWAL_DELEGATE_KEY`
+(`npm run keygen`) and `MEMWAL_REGISTRY_ID` are required. `VITE_SUI_NETWORK` and
+`VITE_SUI_RPC_URL` are required too, and they are **build-time** -- they are
+inlined into the client bundle, so setting them in the dashboard *after* a deploy
+changes nothing. `npm run verify:deploy` checks for exactly this, because the
+symptom is an app that loads and then cannot reach Sui.
+
+### Verifying a deploy
+
+```bash
+npm run verify:deploy https://people-book.vercel.app
+```
+
+Twenty-six checks against the deployed URL: the page and its deep links, the
+service worker, `/api/health` with each piece of configuration named separately,
+the existence of all five API routes (401 rather than 404, which is the
+difference between "needs a session" and "predates the route"), and whether the
+Sui RPC URL actually made it into the bundle. It needs no wallet, because that is
+the state a visitor arrives in.
+
+The alternative is a 500 with no stack trace, which is the normal failure mode of a
+serverless deploy and is not diagnosable from the outside.
+
+### Two things that will bite
+
+**`connection: keep-alive` on a streaming response.** Hop-by-hop, forbidden in
+HTTP/2, which is what Vercel serves. It was present and works locally over
+HTTP/1.1; on Vercel it is the kind of header that turns a working endpoint into a
+500. Removed, with a comment so it does not come back.
+
+**A cached `sw.js`.** Browsers cache service workers in their own store, and a fix
+that ships with a cached worker never reaches anyone. `vercel.json` sets
+`no-cache` on `sw.js` and on `index.html`, and immutable on the hashed assets.

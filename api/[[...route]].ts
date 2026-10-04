@@ -17,7 +17,7 @@ import type { Context } from "hono";
 import { computeNudges, elisionLine } from "./lib/ranking.ts";
 import { capture } from "./lib/capture.ts";
 import { takeTurn } from "./lib/chat.ts";
-import { tasksFor, composeNotice, noticeHistory } from "./lib/tasks.ts";
+import { tasksFor, composeNotice, noticeHistory, isTaskMemory } from "./lib/tasks.ts";
 import { computePatterns } from "./lib/patterns.ts";
 import { PeopleBookStore, MemoryNotFoundError } from "./lib/store.ts";
 import { isConfigError, isWriteError, NAMESPACE, RECALL_LIMIT } from "./lib/memwal.ts";
@@ -548,8 +548,15 @@ app.post("/api/tasks/:id/:action", async (c) => {
   try {
     const memory = await resolved.store.getById(c.req.param("id"));
     if (!memory) return c.json({ error: "not_found", message: "That is not in your book." }, 404);
-    if (memory.type !== "promise") {
-      return c.json({ error: "not_a_task", message: "Only promises can be settled." }, 400);
+    // The shared predicate, so this route and tasksFor cannot disagree about what a
+    // task is. They did: the list produced promises AND dated events while this
+    // accepted only promises, so every dated event rendered a Done button that
+    // answered 400.
+    if (!isTaskMemory(memory)) {
+      return c.json(
+        { error: "not_a_task", message: "Only promises and dated events can be settled." },
+        400,
+      );
     }
 
     // Settling something already settled is a no-op rather than an error, because
@@ -725,10 +732,16 @@ app.post("/api/chat", async (c) => {
     headers: {
       "content-type": "text/event-stream; charset=utf-8",
       "cache-control": "no-cache, no-transform",
-      connection: "keep-alive",
       // Stops Vercel and nginx buffering the stream into one lump at the end,
       // which would defeat the entire point.
       "x-accel-buffering": "no",
+      // Deliberately NO `connection: keep-alive`. It is a hop-by-hop header and is
+      // forbidden in HTTP/2, which is what Vercel serves -- sending it can fail the
+      // request outright, or be stripped. The framing is handled by the runtime.
+      //
+      // It was here because it is the reflex when a stream appears not to arrive,
+      // and it worked locally over HTTP/1.1. On Vercel it is the kind of header
+      // that turns a working endpoint into a 500.
     },
   });
 });

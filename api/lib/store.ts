@@ -458,7 +458,12 @@ export class PeopleBookStore {
    * check whether something was deleted.
    */
   async getById(id: string): Promise<PersonMemory | null> {
-    const { all } = await this.enumerate();
+    // enumerateCached, NOT enumerate. The audit fix that made tombstones findable
+    // reached for the raw worker, which bypasses the cache -- so every getById did
+    // a full relayer enumeration. A task settle went from instant to 9.4 seconds,
+    // which is the fix trading one bug for another. The cached view carries `all`
+    // including tombstones, so nothing is lost by using it.
+    const { all } = await this.enumerateCached();
     const matching = all.filter((m) => m.id === id);
     if (!matching.length) return null;
     return matching.reduce((a, b) => (b.rev > a.rev ? b : a));

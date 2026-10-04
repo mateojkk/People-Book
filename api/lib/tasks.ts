@@ -89,6 +89,32 @@ function dueLabel(urgency: TaskUrgency, daysUntil: number, daysLate: number): st
  * Faded and stale items are marked inactive rather than dropped, so the list can
  * offer to clear them instead of silently losing them.
  */
+/**
+ * What counts as a task, and which of those are outstanding.
+ *
+ * These are two different questions and conflating them breaks both halves. The
+ * first attempt at unifying them used this function for the task list, which let
+ * every settled and kept promise back onto it -- "Already sent." is not a to-do.
+ *
+ *   isTaskMemory     is this kind of thing a task at all? A route that is asked to
+ *                    settle something has to be able to answer no for a trait, so
+ *                    it needs this, not the list's rule.
+ *
+ *   isOutstanding    is it on the list right now? Only an OPEN promise, or a dated
+ *                    event that has not been settled. Settling an event should
+ *                    dismiss it, exactly as settling a promise does, and reopening
+ *                    should bring it back.
+ */
+export function isTaskMemory(memory: PersonMemory): boolean {
+  return memory.type === "promise" || (memory.type === "event" && Boolean(memory.dueAt));
+}
+
+export function isOutstandingTask(memory: PersonMemory): boolean {
+  if (memory.type === "promise") return memory.status === "open";
+  if (memory.type === "event") return Boolean(memory.dueAt) && memory.status !== "settled";
+  return false;
+}
+
 export function tasksFor(memories: readonly PersonMemory[], now: Date, timeZone?: string): Task[] {
   const today = todayISO(now, timeZone);
   // Local, not module-level. A shared map keyed by memory id would be mutated by
@@ -101,9 +127,9 @@ export function tasksFor(memories: readonly PersonMemory[], now: Date, timeZone?
   for (const memory of memories) {
     if (memory.deleted === true) continue;
 
-    const openPromise = memory.type === "promise" && memory.status === "open";
-    const datedEvent = memory.type === "event" && Boolean(memory.dueAt);
-    if (!openPromise && !datedEvent) continue;
+    // isOutstanding, not isTaskMemory: a kept or settled promise is still a task in
+    // the sense that the route can settle it, but it is not something needs doing.
+    if (!isOutstandingTask(memory)) continue;
 
     const stale = isStalePromise(memory, now);
     const faded = isDecayed(memory, now);
