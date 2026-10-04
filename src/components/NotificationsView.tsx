@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api";
 import { markSeen } from "../lib/unread";
-import * as browserNotify from "../lib/notify.ts";
-import { PermissionToggle } from "./PermissionToggle.tsx";
+import * as browserNotify from "../lib/notify.js";
+import { PermissionToggle } from "./PermissionToggle.js";
 
 /**
  * Notifications.

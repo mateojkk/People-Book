@@ -14,7 +14,7 @@
  * deliberate and it is the reason the field is small and quiet.
  */
 import { useCallback, useEffect, useState } from "react";
-import { api } from "../lib/api.ts";
+import { api } from "../lib/api.js";
 
 export interface Profile {
   name?: string;

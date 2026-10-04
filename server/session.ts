@@ -14,7 +14,7 @@
  */
 
 import { isValidPersonalMessageSignature } from "@mysten/sui/verify";
-import { suiClient } from "./account.ts";
+import { suiClient } from "./account.js";
 import { toBase64, fromBase64 } from "@mysten/sui/utils";
 
 export const SESSION_COOKIE = "pb_session";

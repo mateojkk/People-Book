@@ -8,11 +8,11 @@
  * a network to verify.
  */
 
-import { takeTurn, worthSaving, duplicateKey } from "../server/chat.ts";
-import type { PeopleBookStore } from "../shared/store.ts";
-import { makeMemory, type MakeMemoryInput } from "../shared/memory-codec.ts";
-import type { MemoryCandidate, PersonMemory } from "../shared/types.ts";
-import { CONFIRM_THRESHOLD } from "../shared/types.ts";
+import { takeTurn, worthSaving, duplicateKey } from "../server/chat.js";
+import type { PeopleBookStore } from "../shared/store.js";
+import { makeMemory, type MakeMemoryInput } from "../shared/memory-codec.js";
+import type { MemoryCandidate, PersonMemory } from "../shared/types.js";
+import { CONFIRM_THRESHOLD } from "../shared/types.js";
 
 let failures = 0;
 let skips = 0;
@@ -242,7 +242,7 @@ section("undo is a tombstone, not a deletion from history");
 // ── Recurring dates ──────────────────────────────────────────────────────────
 section("a birthday can actually be reminded about");
 
-const { nextOccurrence, effectiveDueAt, computeNudges } = await import("../server/ranking.ts");
+const { nextOccurrence, effectiveDueAt, computeNudges } = await import("../server/ranking.js");
 
 check("an anniversary ahead of today resolves to this year", nextOccurrence("12-25", new Date("2026-10-01T00:00:00Z")) === "2026-12-25", nextOccurrence("12-25", new Date("2026-10-01T00:00:00Z")));
 check("an anniversary already past rolls into next year", nextOccurrence("01-05", new Date("2026-10-01T00:00:00Z")) === "2027-01-05");
@@ -344,7 +344,7 @@ section("undoing then repeating yourself works");
 section("a follow-up can refer back to an earlier turn");
 
 {
-  const { capture } = await import("../server/capture.ts");
+  const { capture } = await import("../server/capture.js");
   const history = [
     { role: "you" as const, text: "Mara's birthday is the 14th" },
     { role: "assistant" as const, text: "Noted." },
@@ -434,7 +434,7 @@ section("the reply arrives as it is written, not all at once");
   // assertion fails whenever Groq is rate-limited -- which it was, repeatedly,
   // within a minute of testing -- and a test that fails for someone else's reasons
   // is worse than no test.
-  const { readStreamed } = await import("../server/chat.ts");
+  const { readStreamed } = await import("../server/chat.js");
 
   const sse = (frames: string[]) =>
     new ReadableStream<Uint8Array>({

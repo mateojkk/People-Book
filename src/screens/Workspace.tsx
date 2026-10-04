@@ -56,15 +56,15 @@ function Notice({ onOpen }: { onOpen: () => void }) {
 
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { api } from "../lib/api.ts";
-import { SEEN_EVENT, badgeLabel, unreadCount } from "../lib/unread.ts";
-import { ChatView } from "../components/ChatView.tsx";
-import { NudgeView } from "../components/NudgeView.tsx";
-import { NotificationsView } from "../components/NotificationsView.tsx";
-import { ProfilePanel } from "../components/ProfilePanel.tsx";
-import { LedgerView } from "../components/LedgerView.tsx";
-import { ErrorNote } from "../components/bits.tsx";
-import { Mark } from "./Landing.tsx";
+import { api } from "../lib/api.js";
+import { SEEN_EVENT, badgeLabel, unreadCount } from "../lib/unread.js";
+import { ChatView } from "../components/ChatView.js";
+import { NudgeView } from "../components/NudgeView.js";
+import { NotificationsView } from "../components/NotificationsView.js";
+import { ProfilePanel } from "../components/ProfilePanel.js";
+import { LedgerView } from "../components/LedgerView.js";
+import { ErrorNote } from "../components/bits.js";
+import { Mark } from "./Landing.js";
 
 /**
  * The signed-in shell: a rail, and one centred column.

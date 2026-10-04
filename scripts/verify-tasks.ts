@@ -9,10 +9,10 @@
  * in, because a test that reads the real clock is a test that fails in a month.
  */
 
-import { relevance, isDecayed, isStalePromise, selectLive, DECAY_FLOOR } from "../server/decay.ts";
-import { tasksFor, isTaskMemory, isOutstandingTask, composeNotice, noticeHistory } from "../server/tasks.ts";
-import { makeMemory, type MakeMemoryInput } from "../shared/memory-codec.ts";
-import type { PersonMemory } from "../shared/types.ts";
+import { relevance, isDecayed, isStalePromise, selectLive, DECAY_FLOOR } from "../server/decay.js";
+import { tasksFor, isTaskMemory, isOutstandingTask, composeNotice, noticeHistory } from "../server/tasks.js";
+import { makeMemory, type MakeMemoryInput } from "../shared/memory-codec.js";
+import type { PersonMemory } from "../shared/types.js";
 
 let failures = 0;
 let checks = 0;

@@ -6,19 +6,19 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ConnectButton, useSignIn } from "./lib/auth.ts";
-import { useOwnership } from "./lib/ownership.ts";
-import { api } from "./lib/api.ts";
-import { NudgeView } from "./components/NudgeView.tsx";
-import { LedgerView } from "./components/LedgerView.tsx";
-import { Workspace } from "./screens/Workspace.tsx";
-import { Landing } from "./screens/Landing.tsx";
-import { SignIn } from "./screens/SignIn.tsx";
-import { ErrorNote } from "./components/bits.tsx";
+import { ConnectButton, useSignIn } from "./lib/auth.js";
+import { useOwnership } from "./lib/ownership.js";
+import { api } from "./lib/api.js";
+import { NudgeView } from "./components/NudgeView.js";
+import { LedgerView } from "./components/LedgerView.js";
+import { Workspace } from "./screens/Workspace.js";
+import { Landing } from "./screens/Landing.js";
+import { SignIn } from "./screens/SignIn.js";
+import { ErrorNote } from "./components/bits.js";
 import { Routes, Route, Link, useLocation, useNavigate } from "react-router-dom";
-import { Mark } from "./screens/Landing.tsx";
-import { ToastStack, useToasts } from "./components/Toast.tsx";
-import type { PersonMemory } from "./types.ts";
+import { Mark } from "./screens/Landing.js";
+import { ToastStack, useToasts } from "./components/Toast.js";
+import type { PersonMemory } from "./types.js";
 
 type Tab = "talk" | "notifications" | "book" | "profile";
 

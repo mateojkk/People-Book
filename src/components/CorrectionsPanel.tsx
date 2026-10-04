@@ -63,10 +63,10 @@ export function PatternsPanel() {
  * asserted.
  */
 import { useCallback, useEffect, useState } from "react";
-import { api } from "../lib/api.ts";
-import { ErrorNote } from "./bits.tsx";
-import type { PersonMemory } from "../types.ts";
-import type { Pattern } from "../types.ts";
+import { api } from "../lib/api.js";
+import { ErrorNote } from "./bits.js";
+import type { PersonMemory } from "../types.js";
+import type { Pattern } from "../types.js";
 
 interface CorrectionsResponse {
   corrections: PersonMemory[];

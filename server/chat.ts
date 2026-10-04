@@ -38,14 +38,14 @@
  * into the design. Undo is the answer to that, not determinism.
  */
 
-import { capture } from "./capture.ts";
-import { computePatterns, type Pattern } from "./patterns.ts";
-import { groqFetch } from "./groq.ts";
-import { computeNudges } from "./ranking.ts";
-import { collapseById, isLive } from "../shared/memory-codec.ts";
-import type { PeopleBookStore } from "../shared/store.ts";
-import type { MemoryCandidate, Nudge, PersonMemory } from "../shared/types.ts";
-import { CONFIRM_THRESHOLD } from "../shared/types.ts";
+import { capture } from "./capture.js";
+import { computePatterns, type Pattern } from "./patterns.js";
+import { groqFetch } from "./groq.js";
+import { computeNudges } from "./ranking.js";
+import { collapseById, isLive } from "../shared/memory-codec.js";
+import type { PeopleBookStore } from "../shared/store.js";
+import type { MemoryCandidate, Nudge, PersonMemory } from "../shared/types.js";
+import { CONFIRM_THRESHOLD } from "../shared/types.js";
 
 
 /** One prior turn, in the order it happened. */

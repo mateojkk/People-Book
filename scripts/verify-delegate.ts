@@ -51,7 +51,7 @@ const {
   bytesToHex,
   hexToBytes,
   RELAY_URL,
-} = await import("../src/lib/memwal.ts");
+} = await import("../src/lib/memwal.js");
 
 let failures = 0;
 let checks = 0;

@@ -32,7 +32,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useCurrentAccount, useDAppKit, useWallets } from "@mysten/dapp-kit-react";
 import { ConnectButton } from "@mysten/dapp-kit-react/ui";
-import { api } from "./api.ts";
+import { api } from "./api.js";
 
 export type SignInState =
   | { phase: "disconnected" }

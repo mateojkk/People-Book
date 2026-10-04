@@ -1,108 +1,75 @@
 /**
- * Serverless entry point — DIAGNOSTIC BUILD.
+ * The serverless entry point.
  *
- * This is a probe, not the app. It imports nothing from the codebase, so whatever
- * is breaking the real entry cannot break this one, and it reports what Vercel
- * actually uploaded.
+ * ── Why the imports below end in .js and not .ts ─────────────────────────────
  *
- * ── Why a probe and not more guessing ────────────────────────────────────────
+ * This deployment returned
  *
- * The deployment has failed three ways now, and each failure hid the next:
+ *   Error Code: FUNCTION_INVOCATION_FAILED
  *
- *   1. FUNCTION_INVOCATION_FAILED, no body. Cause: `api/_lib/` was `_`-prefixed,
- *      which stops Vercel routing those files as functions *and* stops it
- *      uploading them. Found by a wrapper that loaded the app lazily, which
- *      reported: Cannot find module '/var/task/api/_lib/app.ts'.
+ * for every request, with no stack trace. A probe that imported nothing from the
+ * codebase found the cause:
  *
- *   2. Moved the implementation to `server/`, outside anything Vercel scans.
- *      Switched to a static import. Still FUNCTION_INVOCATION_FAILED, no body —
- *      and a static import failure happens before any of my code runs, so the
- *      wrapper could not catch it. The diagnosis mechanism and the thing being
- *      diagnosed fought each other.
+ *   serverJsExists:  true
+ *   serverTsExists:  false
+ *   importWithTsExt: ERR_MODULE_NOT_FOUND '/var/task/server/app.ts'
+ *   importWithoutExt: ERR_MODULE_NOT_FOUND '/var/task/server/app'
  *
- * So this asks the two questions that distinguish what is left:
+ * Vercel transpiles each TypeScript file to `.js` and traces it into /var/task --
+ * but it does **not** rewrite the specifiers inside the emitted JavaScript. So
+ * `import "../server/app.ts"` survives compilation verbatim and then fails at
+ * runtime, because no `.ts` file exists in the bundle. Both `.ts` and
+ * extensionless fail; only `.js` resolves.
  *
- *   - Are the `server/` files in the upload at all?
- *   - If they are, are they emitted as `.js` while the import says `.ts`?
+ * Hence the NodeNext convention throughout this repo: relative imports name the
+ * `.js` that the compiler will emit, and TypeScript maps it back to the `.ts`
+ * source. `allowImportingTsExtensions` is off in tsconfig.json on purpose --
+ * leaving it on is what allowed the `.ts` form back in, and that form is exactly
+ * what the deployed function could not resolve.
  *
- * Both are answerable by listing the directory rather than by reasoning about
- * Vercel's compiler, which is what has been failing.
+ * This was invisible locally for a long time. tsx, tsc and Vite all resolve both
+ * forms happily, and the local dev server has no bundling step at all, so every
+ * local check passed against an import style the deployment cannot honour.
  *
- * DELETE THIS once the real entry works.
+ * ── Why the implementation lives in server/ ───────────────────────────────────
+ *
+ * api/ must contain only this file. Vercel turns every file under /api into a
+ * function, and it drops files whose names begin with `_` from the upload
+ * entirely -- so the library files cannot live here, underscore-prefixed or not.
+ * server/ is outside the directory Vercel scans, which leaves exactly one
+ * function and keeps the implementation in the bundle.
  */
 
-import { readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { app } from "../server/app.js";
 
-function walk(dir: string, depth = 0): string[] {
-  if (depth > 4) return [];
-  let entries: string[] = [];
-  try {
-    entries = readdirSync(dir);
-  } catch {
-    return [];
-  }
-  const out: string[] = [];
-  for (const name of entries) {
-    const full = join(dir, name);
-    let isDir = false;
-    try {
-      isDir = statSync(full).isDirectory();
-    } catch {
-      continue;
-    }
-    if (isDir) out.push(...walk(full, depth + 1));
-    else out.push(full.replace("/var/task", ""));
-  }
-  return out;
+/**
+ * Turns a throw that Hono did not handle into a body that names it.
+ *
+ * This did not find the bug above -- a failure at module load happens before any
+ * of this file runs, which is why the platform reported nothing. It is kept
+ * because the next class of failure, an escaped throw at request time, should be
+ * readable rather than a bare platform code.
+ */
+function report(error: unknown): Response {
+  const err = error instanceof Error ? error : new Error(String(error));
+  return new Response(
+    JSON.stringify({
+      error: "request_failed",
+      message: err.message || "(no message)",
+      name: err.name,
+      stack: (err.stack ?? "").split("\n").slice(0, 12).join("\n"),
+      node: process.version,
+    }),
+    { status: 500, headers: { "content-type": "application/json" } },
+  );
 }
 
 export default {
-  async fetch(): Promise<Response> {
-    const files = walk("/var/task");
-    const interesting = files.filter(
-      (f) =>
-        f.includes("server/") ||
-        f.includes("api/") ||
-        f.endsWith("package.json") ||
-        f.includes("routes") ||
-        f.includes("vc-config"),
-    );
-
-    let probe = "read ok";
+  async fetch(request: Request): Promise<Response> {
     try {
-      const spec = "../server/app.ts";
-      await import(spec);
+      return await app.fetch(request);
     } catch (error) {
-      probe = `${(error as { code?: string }).code ?? "?"}: ${
-        error instanceof Error ? error.message.split("\n")[0] : String(error)
-      }`;
+      return report(error);
     }
-
-    let probeNoExt = "read ok";
-    try {
-      await import("../server/app");
-    } catch (error) {
-      probeNoExt = `${(error as { code?: string }).code ?? "?"}: ${
-        error instanceof Error ? error.message.split("\n")[0] : String(error)
-      }`;
-    }
-
-    return new Response(
-      JSON.stringify(
-        {
-          node: process.version,
-          totalFiles: files.length,
-          serverJsExists: files.some((f) => f.endsWith("server/app.js")),
-          serverTsExists: files.some((f) => f.endsWith("server/app.ts")),
-          importWithTsExt: probe,
-          importWithoutExt: probeNoExt,
-          files: interesting.slice(0, 40),
-        },
-        null,
-        2,
-      ),
-      { status: 200, headers: { "content-type": "application/json" } },
-    );
   },
 };

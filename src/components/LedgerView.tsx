@@ -7,10 +7,10 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { api } from "../lib/api.ts";
-import { Empty, ErrorNote } from "./bits.tsx";
-import type { PersonMemory } from "../types.ts";
-import { CorrectionsPanel, PatternsPanel } from "./CorrectionsPanel.tsx";
+import { api } from "../lib/api.js";
+import { Empty, ErrorNote } from "./bits.js";
+import type { PersonMemory } from "../types.js";
+import { CorrectionsPanel, PatternsPanel } from "./CorrectionsPanel.js";
 
 interface MemoriesResponse {
   memories: PersonMemory[];

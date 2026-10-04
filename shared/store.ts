@@ -33,14 +33,14 @@ import {
   parseMemory,
   reviseMemory,
   serializeMemory,
-} from "./memory-codec.ts";
-import type { PersonMemory } from "./types.ts";
+} from "./memory-codec.js";
+import type { PersonMemory } from "./types.js";
 import {
   NAMESPACE,
   RECALL_LIMIT,
   assertAppNamespace,
   withWriteRetry,
-} from "./memwal.ts";
+} from "./memwal.js";
 
 /**
  * Broad queries used to enumerate a namespace.

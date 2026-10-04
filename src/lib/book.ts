@@ -29,8 +29,8 @@
  */
 
 import type { MemWal } from "@mysten-incubation/memwal";
-import { PeopleBookStore } from "../../shared/store.ts";
-import { createBrowserMemWal, getOrCreateDelegate, loadDelegate, type StoredDelegate } from "./memwal.ts";
+import { PeopleBookStore } from "../../shared/store.js";
+import { createBrowserMemWal, getOrCreateDelegate, loadDelegate, type StoredDelegate } from "./memwal.js";
 
 /** Why the book could not be opened, in terms the UI can act on. */
 export type BookErrorKind = "no_delegate" | "rejected" | "unknown";

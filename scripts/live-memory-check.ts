@@ -12,11 +12,11 @@
  * Needs MEMWAL_PRIVATE_KEY / MEMWAL_ACCOUNT_ID for an account you own.
  */
 
-import { PeopleBookStore } from "../shared/store.ts";
-import { getClient } from "../server/memwal.ts";
-import { computeNudges } from "../server/ranking.ts";
-import { demoCast } from "../shared/demo-cast.ts";
-import { SELF } from "../shared/types.ts";
+import { PeopleBookStore } from "../shared/store.js";
+import { getClient } from "../server/memwal.js";
+import { computeNudges } from "../server/ranking.js";
+import { demoCast } from "../shared/demo-cast.js";
+import { SELF } from "../shared/types.js";
 
 const accountId: string | undefined = process.env.MEMWAL_ACCOUNT_ID;
 if (!accountId) {

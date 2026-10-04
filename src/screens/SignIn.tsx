@@ -1,6 +1,6 @@
-import { ConnectButton } from "../lib/auth.ts";
-import { Mark } from "./Landing.tsx";
-import type { SignInState } from "../lib/auth.ts";
+import { ConnectButton } from "../lib/auth.js";
+import { Mark } from "./Landing.js";
+import type { SignInState } from "../lib/auth.js";
 
 /**
  * Signing in, and setting the account up.

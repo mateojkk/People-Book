@@ -21,7 +21,7 @@ g.window = { location: { origin: "https://people-book.example" }, localStorage: 
 g.localStorage = localStorageStub;
 
 const { openBook, withBook, prepareDelegate, currentDelegate, BookError } = await import(
-  "../src/lib/book.ts"
+  "../src/lib/book.js"
 );
 // Type-only, because the dynamic import above exists to run after the browser
 // globals are stubbed, and a static import would execute the module too early.

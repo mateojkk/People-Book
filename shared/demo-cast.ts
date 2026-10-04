@@ -13,7 +13,7 @@
  * thing a judge can check in thirty seconds.
  */
 
-import type { MakeMemoryInput } from "./memory-codec.ts";
+import type { MakeMemoryInput } from "./memory-codec.js";
 
 /** Dates are relative to the seed moment so the demo ages sensibly over time. */
 function daysFromNow(days: number, from: Date): string {

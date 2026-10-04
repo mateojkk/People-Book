@@ -386,7 +386,7 @@ export async function delegateIsRegistered(accountId: string): Promise<boolean> 
 
   let registered = false;
   try {
-    const { getClient } = await import("./memwal.ts");
+    const { getClient } = await import("./memwal.js");
     const result = await getClient(accountId).listNamespaces({ limit: 1 });
     registered = Array.isArray(result?.namespaces);
   } catch {

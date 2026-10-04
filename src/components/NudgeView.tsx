@@ -10,9 +10,9 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api } from "../lib/api.ts";
-import { BasisNote, ElisionNotice, Empty, ErrorNote, KindTag, SourceTrace } from "./bits.tsx";
-import type { LedgerEntry, NudgeSet, PersonMemory } from "../types.ts";
+import { api } from "../lib/api.js";
+import { BasisNote, ElisionNotice, Empty, ErrorNote, KindTag, SourceTrace } from "./bits.js";
+import type { LedgerEntry, NudgeSet, PersonMemory } from "../types.js";
 
 interface NudgeResponse extends NudgeSet {
   elisionNotices: string[];

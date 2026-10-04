@@ -1,4 +1,4 @@
-import { todayISO } from "../shared/memory-codec.ts";
+import { todayISO } from "../shared/memory-codec.js";
 /**
  * What to do today.
  *
@@ -18,8 +18,8 @@ import { todayISO } from "../shared/memory-codec.ts";
  * own. A task list assembled this way cannot disagree with the book.
  */
 
-import { isDecayed, isStalePromise, relevance } from "./decay.ts";
-import type { PersonMemory } from "../shared/types.ts";
+import { isDecayed, isStalePromise, relevance } from "./decay.js";
+import type { PersonMemory } from "../shared/types.js";
 
 export type TaskUrgency = "overdue" | "today" | "soon" | "later";
 

@@ -14,8 +14,8 @@
  * Runs with no network, no key and no wallet.
  */
 
-import { PeopleBookStore } from "../shared/store.ts";
-import { NAMESPACE, NAMESPACE_PREFIX, assertAppNamespace } from "../server/memwal.ts";
+import { PeopleBookStore } from "../shared/store.js";
+import { NAMESPACE, NAMESPACE_PREFIX, assertAppNamespace } from "../server/memwal.js";
 
 let failures = 0;
 function check(name: string, condition: boolean, detail?: unknown) {

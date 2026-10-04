@@ -13,7 +13,7 @@ import { createDAppKit } from "@mysten/dapp-kit-core";
 import { DAppKitProvider } from "@mysten/dapp-kit-react";
 import { BrowserRouter } from "react-router-dom";
 import { SuiGrpcClient } from "@mysten/sui/grpc";
-import App from "./App.tsx";
+import App from "./App.js";
 import "./index.css";
 
 const network = (import.meta.env.VITE_SUI_NETWORK as "mainnet" | "testnet" | "devnet") || "mainnet";

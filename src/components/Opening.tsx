@@ -19,8 +19,8 @@
  * message that matters look like filler.
  */
 import { useEffect, useState } from "react";
-import { api } from "../lib/api.ts";
-import type { Task } from "./NotificationsView.tsx";
+import { api } from "../lib/api.js";
+import type { Task } from "./NotificationsView.js";
 
 interface Today {
   notice?: string;

@@ -1,4 +1,4 @@
-import { todayISO } from "../shared/memory-codec.ts";
+import { todayISO } from "../shared/memory-codec.js";
 /**
  * Decay.
  *
@@ -29,7 +29,7 @@ import { todayISO } from "../shared/memory-codec.ts";
  * told it was worthless. If you want it gone, you remove it.
  */
 
-import type { PersonMemory } from "../shared/types.ts";
+import type { PersonMemory } from "../shared/types.js";
 
 /** How long before an untethered memory has faded out of relevance. */
 export const HALF_LIFE_DAYS = 120;

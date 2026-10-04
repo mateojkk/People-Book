@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api } from "../lib/api.ts";
-import { Opening } from "./Opening.tsx";
+import { api } from "../lib/api.js";
+import { Opening } from "./Opening.js";
 
 /** One turn of the conversation. */
 export interface Turn {

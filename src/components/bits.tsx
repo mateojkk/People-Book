@@ -6,7 +6,7 @@
  * it, and these are the components that let a user do that tracing.
  */
 
-import type { NudgeKind, PersonMemory } from "../types.ts";
+import type { NudgeKind, PersonMemory } from "../types.js";
 
 const KIND_LABEL: Record<NudgeKind, string> = {
   date: "date",

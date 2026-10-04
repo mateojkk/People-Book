@@ -28,7 +28,7 @@ const store = new Map<string, string>();
   length: 0,
 } as unknown as Storage;
 
-const { seenAt, markSeen, unreadCount, unseenNotices, badgeLabel, SEEN_EVENT } = await import("../src/lib/unread.ts");
+const { seenAt, markSeen, unreadCount, unseenNotices, badgeLabel, SEEN_EVENT } = await import("../src/lib/unread.js");
 const count = (dates: string[], openTasks = 0) => unreadCount({ dates, openTasks });
 
 section("before it has ever been opened");

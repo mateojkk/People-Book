@@ -14,13 +14,13 @@
 
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { computeNudges, elisionLine } from "./ranking.ts";
-import { capture } from "./capture.ts";
-import { takeTurn } from "./chat.ts";
-import { tasksFor, composeNotice, noticeHistory, isTaskMemory } from "./tasks.ts";
-import { computePatterns } from "./patterns.ts";
-import { PeopleBookStore, MemoryNotFoundError } from "../shared/store.ts";
-import { isConfigError, isWriteError, NAMESPACE, RECALL_LIMIT, getClient, dropClient } from "./memwal.ts";
+import { computeNudges, elisionLine } from "./ranking.js";
+import { capture } from "./capture.js";
+import { takeTurn } from "./chat.js";
+import { tasksFor, composeNotice, noticeHistory, isTaskMemory } from "./tasks.js";
+import { computePatterns } from "./patterns.js";
+import { PeopleBookStore, MemoryNotFoundError } from "../shared/store.js";
+import { isConfigError, isWriteError, NAMESPACE, RECALL_LIMIT, getClient, dropClient } from "./memwal.js";
 import {
   delegateIsRegistered,
   deployment,
@@ -35,7 +35,7 @@ import {
   resetDeploymentCache,
   clearDelegateCache,
   verifyRegistry,
-} from "./account.ts";
+} from "./account.js";
 import {
   SESSION_COOKIE,
   SessionConfigError,
@@ -45,9 +45,9 @@ import {
   parseCookies,
   readSession,
   redeemChallenge,
-} from "./session.ts";
-import { SELF, type NudgeSet, type PersonMemory } from "../shared/types.ts";
-import { demoCast } from "../shared/demo-cast.ts";
+} from "./session.js";
+import { SELF, type NudgeSet, type PersonMemory } from "../shared/types.js";
+import { demoCast } from "../shared/demo-cast.js";
 
 export const app = new Hono();
 
@@ -330,7 +330,7 @@ app.post("/api/auth/session", async (c) => {
     );
   }
 
-  const { createSession } = await import("./session.ts");
+  const { createSession } = await import("./session.js");
   const cookie = await createSession(result.address);
   c.header("Set-Cookie", cookieHeader(SESSION_COOKIE, cookie, 60 * 60 * 24 * 30));
   return c.json({ address: result.address });
@@ -424,7 +424,7 @@ app.post("/api/account/adopt", async (c) => {
   const accountId = session.accountId ?? (await findAccountId(session.address).catch(() => null));
   if (!accountId) return c.json({ error: "no_account" }, 404);
 
-  const { createSession } = await import("./session.ts");
+  const { createSession } = await import("./session.js");
   c.header("Set-Cookie", cookieHeader(SESSION_COOKIE, await createSession(session.address, accountId), 60 * 60 * 24 * 30));
   return c.json({ ok: true, accountId });
 });
@@ -478,7 +478,7 @@ app.post("/api/account/claim", async (c) => {
 
   // A fresh grant is still required, so a previous negative answer must not stick.
   markDelegateRegistered(hex);
-  const { createSession } = await import("./session.ts");
+  const { createSession } = await import("./session.js");
   c.header("Set-Cookie", cookieHeader(SESSION_COOKIE, await createSession(session.address, hex), 60 * 60 * 24 * 30));
   return c.json({ ok: true, accountId: hex });
 });

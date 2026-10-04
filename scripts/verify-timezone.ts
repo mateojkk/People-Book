@@ -7,7 +7,7 @@
  * overdue promise is counted a day late. A companion that says someone's
  * birthday is tomorrow, on the day before, is worse than one that says nothing.
  */
-import { todayISO } from "../shared/memory-codec.ts";
+import { todayISO } from "../shared/memory-codec.js";
 
 let failures = 0;
 let checks = 0;

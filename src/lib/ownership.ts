@@ -13,7 +13,7 @@ import { useCurrentAccount, useDAppKit } from "@mysten/dapp-kit-react";
 import { addDelegateKey, createAccount } from "@mysten-incubation/memwal/account";
 import { fromHex } from "@mysten/sui/utils";
 import { SuiGrpcClient } from "@mysten/sui/grpc";
-import { api } from "./api.ts";
+import { api } from "./api.js";
 
 const network = (import.meta.env.VITE_SUI_NETWORK as "mainnet" | "testnet") || "mainnet";
 const rpcUrl = (import.meta.env.VITE_SUI_RPC_URL as string) || "https://fullnode.mainnet.sui.io:443";

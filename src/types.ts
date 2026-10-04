@@ -16,8 +16,8 @@ export type {
   NudgeKind,
   NudgeSet,
   PersonMemory,
-} from "../shared/types.ts";
-export { SELF, MEMORY_TYPES, CONFIRM_THRESHOLD } from "../shared/types.ts";
+} from "../shared/types.js";
+export { SELF, MEMORY_TYPES, CONFIRM_THRESHOLD } from "../shared/types.js";
 
 /**
  * A repeated claim, computed from the book. Mirrors api/lib/patterns.ts.

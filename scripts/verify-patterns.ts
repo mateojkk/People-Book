@@ -5,9 +5,9 @@
  * makes the user distrust the one product whose whole claim is that its answers
  * come from their actual history.
  */
-import { computePatterns, MIN_OCCURRENCES } from "../server/patterns.ts";
-import { makeMemory, reviseMemory } from "../shared/memory-codec.ts";
-import type { PersonMemory } from "../shared/types.ts";
+import { computePatterns, MIN_OCCURRENCES } from "../server/patterns.js";
+import { makeMemory, reviseMemory } from "../shared/memory-codec.js";
+import type { PersonMemory } from "../shared/types.js";
 
 let failures = 0;
 function section(name: string) { console.log(`\n${name}`); }

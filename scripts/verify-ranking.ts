@@ -9,9 +9,9 @@
  * rather than something worse.
  */
 
-import { makeMemory } from "../shared/memory-codec.ts";
-import { type PersonMemory, SELF } from "../shared/types.ts";
-import { ABSENCE_DAYS, HORIZON_DAYS, computeNudges, elisionLine } from "../server/ranking.ts";
+import { makeMemory } from "../shared/memory-codec.js";
+import { type PersonMemory, SELF } from "../shared/types.js";
+import { ABSENCE_DAYS, HORIZON_DAYS, computeNudges, elisionLine } from "../server/ranking.js";
 
 let failures = 0;
 function check(name: string, condition: boolean, detail?: unknown) {

@@ -18,15 +18,15 @@
  * is worse than no capture, because the user cannot tell which happened.
  */
 
-import { groqFetch } from "./groq.ts";
+import { groqFetch } from "./groq.js";
 import {
   CONFIRM_THRESHOLD,
   MEMORY_TYPES,
   type CaptureResult,
   type MemoryCandidate,
   type MemoryType,
-} from "../shared/types.ts";
-import { recurringDate, monthForDayOnly, isFullMonthDay } from "./dates.ts";
+} from "../shared/types.js";
+import { recurringDate, monthForDayOnly, isFullMonthDay } from "./dates.js";
 
 
 const SYSTEM = `Extract durable facts from a message sent to someone's private assistant. Structured candidates only -- not a summary, not a reply.

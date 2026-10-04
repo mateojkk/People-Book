@@ -19,7 +19,7 @@
  */
 
 import { MemWal } from "@mysten-incubation/memwal";
-import { MemWalConfigError, MEMWAL_REQUEST_TIMEOUT_MS, assertAppNamespace } from "../shared/memwal.ts";
+import { MemWalConfigError, MEMWAL_REQUEST_TIMEOUT_MS, assertAppNamespace } from "../shared/memwal.js";
 
 export {
   NAMESPACE_PREFIX,
@@ -32,7 +32,7 @@ export {
   withWriteRetry,
   isConfigError,
   isWriteError,
-} from "../shared/memwal.ts";
+} from "../shared/memwal.js";
 
 /**
  * One client per (accountId, namespace), cached for the life of the process.

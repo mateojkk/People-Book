@@ -26,7 +26,7 @@ import {
   type MemoryType,
   MEMORY_TYPES,
   type PersonMemory,
-} from "./types.ts";
+} from "./types.js";
 
 /**
  * Sentinel separating the human text from the machine block.

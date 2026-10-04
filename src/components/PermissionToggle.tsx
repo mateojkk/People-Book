@@ -22,7 +22,7 @@
  * belongs in this comment, where the next person finds it.
  */
 import { useCallback, useEffect, useState } from "react";
-import * as browserNotify from "../lib/notify.ts";
+import * as browserNotify from "../lib/notify.js";
 
 export function PermissionToggle({ onNotify }: { onNotify: () => Promise<number> }) {
   const [state, setState] = useState<browserNotify.PermissionState>("default");

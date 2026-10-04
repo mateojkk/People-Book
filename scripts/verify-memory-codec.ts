@@ -17,8 +17,8 @@ import {
   serializeMemory,
   toDisplayText,
   todayISO,
-} from "../shared/memory-codec.ts";
-import { MEMORY_TYPES, type PersonMemory } from "../shared/types.ts";
+} from "../shared/memory-codec.js";
+import { MEMORY_TYPES, type PersonMemory } from "../shared/types.js";
 
 let failures = 0;
 

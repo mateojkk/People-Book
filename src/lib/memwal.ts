@@ -34,7 +34,7 @@ import {
   MEMWAL_REQUEST_TIMEOUT_MS,
   NAMESPACE,
   assertAppNamespace,
-} from "../../shared/memwal.ts";
+} from "../../shared/memwal.js";
 
 export interface StoredDelegate {
   privateKey: string;
