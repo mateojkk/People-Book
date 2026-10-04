@@ -142,6 +142,17 @@ export default function App() {
       title: `Signed in as ${address.slice(0, 6)}…${address.slice(-4)}`,
       detail: "Your book is open. Ask it what happened.",
     });
+    // Warm every tab's data now, while the user is still reading the greeting.
+    // Each tab fetches on mount; without this the first visit to each one pays
+    // a full ledger read. With the GET cache, these land in it, and the tab
+    // mounts share the in-flight request or read it back instead of fetching.
+    //
+    // Fire and forget, failures silent: a prefetch that errors must not surface
+    // anywhere, because the tab will fetch on mount exactly as before. This only
+    // ever makes things faster, never different.
+    for (const path of ["/api/today", "/api/memories", "/api/profile", "/api/corrections", "/api/patterns"]) {
+      void api.get(path).catch(() => {});
+    }
   }, [ready, who?.signedIn, who?.address, push]);
 
   /**
