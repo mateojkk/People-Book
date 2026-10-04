@@ -18,7 +18,7 @@ function check(label: string, ok: boolean, detail = "") {
   if (!ok) failures++;
 }
 
-const src = readFileSync(new URL("../api/_lib/capture.ts", import.meta.url), "utf8");
+const src = readFileSync(new URL("../server/capture.ts", import.meta.url), "utf8");
 const system = /const SYSTEM = `([\s\S]*?)`;/.exec(src)?.[1] ?? "";
 
 section("size");

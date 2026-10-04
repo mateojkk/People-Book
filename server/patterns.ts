@@ -28,7 +28,7 @@
  * for this file to become a second source of truth that disagrees with your book.
  */
 
-import type { PersonMemory } from "../../shared/types.ts";
+import type { PersonMemory } from "../shared/types.ts";
 
 /** How many separate occurrences before something counts as a pattern. */
 export const MIN_OCCURRENCES = 2;

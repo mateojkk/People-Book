@@ -24,9 +24,9 @@ import type {
   NudgeKind,
   NudgeSet,
   PersonMemory,
-} from "../../shared/types.ts";
-import { SELF } from "../../shared/types.ts";
-import { todayISO } from "../../shared/memory-codec.ts";
+} from "../shared/types.ts";
+import { SELF } from "../shared/types.ts";
+import { todayISO } from "../shared/memory-codec.ts";
 
 /** How far ahead a date is worth mentioning. Two weeks is short enough to act on. */
 export const HORIZON_DAYS = 14;

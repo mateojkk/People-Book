@@ -13,8 +13,8 @@
  */
 
 import { PeopleBookStore } from "../shared/store.ts";
-import { getClient } from "../api/_lib/memwal.ts";
-import { computeNudges } from "../api/_lib/ranking.ts";
+import { getClient } from "../server/memwal.ts";
+import { computeNudges } from "../server/ranking.ts";
 import { demoCast } from "../shared/demo-cast.ts";
 import { SELF } from "../shared/types.ts";
 

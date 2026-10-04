@@ -1,4 +1,4 @@
-import { todayISO } from "../../shared/memory-codec.ts";
+import { todayISO } from "../shared/memory-codec.ts";
 /**
  * What to do today.
  *
@@ -19,7 +19,7 @@ import { todayISO } from "../../shared/memory-codec.ts";
  */
 
 import { isDecayed, isStalePromise, relevance } from "./decay.ts";
-import type { PersonMemory } from "../../shared/types.ts";
+import type { PersonMemory } from "../shared/types.ts";
 
 export type TaskUrgency = "overdue" | "today" | "soon" | "later";
 

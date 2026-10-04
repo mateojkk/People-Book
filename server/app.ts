@@ -19,7 +19,7 @@ import { capture } from "./capture.ts";
 import { takeTurn } from "./chat.ts";
 import { tasksFor, composeNotice, noticeHistory, isTaskMemory } from "./tasks.ts";
 import { computePatterns } from "./patterns.ts";
-import { PeopleBookStore, MemoryNotFoundError } from "../../shared/store.ts";
+import { PeopleBookStore, MemoryNotFoundError } from "../shared/store.ts";
 import { isConfigError, isWriteError, NAMESPACE, RECALL_LIMIT, getClient, dropClient } from "./memwal.ts";
 import {
   delegateIsRegistered,
@@ -46,8 +46,8 @@ import {
   readSession,
   redeemChallenge,
 } from "./session.ts";
-import { SELF, type NudgeSet, type PersonMemory } from "../../shared/types.ts";
-import { demoCast } from "../../shared/demo-cast.ts";
+import { SELF, type NudgeSet, type PersonMemory } from "../shared/types.ts";
+import { demoCast } from "../shared/demo-cast.ts";
 
 export const app = new Hono();
 

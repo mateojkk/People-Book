@@ -8,7 +8,7 @@
  */
 
 import { serve } from "@hono/node-server";
-import { app } from "../api/_lib/app.ts";
+import { app } from "../server/app.ts";
 
 const port = Number(process.env.API_PORT ?? 8787);
 

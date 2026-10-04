@@ -5,7 +5,7 @@
  * makes the user distrust the one product whose whole claim is that its answers
  * come from their actual history.
  */
-import { computePatterns, MIN_OCCURRENCES } from "../api/_lib/patterns.ts";
+import { computePatterns, MIN_OCCURRENCES } from "../server/patterns.ts";
 import { makeMemory, reviseMemory } from "../shared/memory-codec.ts";
 import type { PersonMemory } from "../shared/types.ts";
 

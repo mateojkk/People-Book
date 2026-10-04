@@ -27,7 +27,7 @@ import { isValidPersonalMessageSignature } from "@mysten/sui/verify";
 import { SuiGrpcClient } from "@mysten/sui/grpc";
 import { bcs } from "@mysten/bcs";
 import { readFileSync } from "node:fs";
-import { CHALLENGE_TEXT, createSession, readSession } from "../api/_lib/session.ts";
+import { CHALLENGE_TEXT, createSession, readSession } from "../server/session.ts";
 
 const RPC = process.env.SUI_RPC_URL || "https://fullnode.mainnet.sui.io:443";
 const API = process.env.CHECK_API_URL || "http://127.0.0.1:8787";
@@ -203,7 +203,7 @@ check("the plain verifier refuses a zkLogin signature", !(await isValidPersonalM
 // remove.
 // Comments are stripped before the greps below, because the code deliberately
 // NAMES the hand-rolled approach it no longer uses in order to explain why.
-const sessionSource = readFileSync(new URL("../api/_lib/session.ts", import.meta.url), "utf8")
+const sessionSource = readFileSync(new URL("../server/session.ts", import.meta.url), "utf8")
   .split("\n")
   .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
   .join("\n");
@@ -290,8 +290,8 @@ check("undefined is refused", (await readSession(undefined)) === null);
 // answers it on any device. Live, against mainnet.
 section("an account is resolved from the address alone, off the public registry");
 
-const { findAccountId } = await import("../api/_lib/account.ts");
-const { deployment } = await import("../api/_lib/account.ts");
+const { findAccountId } = await import("../server/account.ts");
+const { deployment } = await import("../server/account.ts");
 
 // Two real owner/account pairs read out of the registry's own dynamic-field list.
 const KNOWN: [string, string][] = [
@@ -326,7 +326,7 @@ section("the account routes the setup screen calls are registered");
 
 // The Hono app directly, so app.request() keeps working. The serverless
 // entry is a thin fetch wrapper and has no .request test helper.
-const routes = (await import("../api/_lib/app.ts")).app;
+const routes = (await import("../server/app.ts")).app;
 const REAL_OWNER = "0x4a9ac431b20ec2a3d3dbd4cbcaafd3eb0e64267d2085adc0149ca78436f04437";
 const REAL_ACCOUNT = "0x7a7e59fd47072f7cab58b45591e8865c7b4896a9ae92a7e22b093e2bce66f97b";
 
@@ -410,7 +410,7 @@ check("undo is refused cleanly, not a crash", undoUnknown.status === 403, undoUn
 // is roughly a coin toss and has nothing to do with the bug being guarded.
 section("who a memory may be attributed to");
 
-const { isAttributable } = await import("../api/_lib/capture.ts");
+const { isAttributable } = await import("../server/capture.ts");
 
 const known = new Set(["ravi"]);
 check("someone already in the book is allowed", isAttributable("Ravi", known, ""));

@@ -15,7 +15,7 @@
  */
 
 import { PeopleBookStore } from "../shared/store.ts";
-import { NAMESPACE, NAMESPACE_PREFIX, assertAppNamespace } from "../api/_lib/memwal.ts";
+import { NAMESPACE, NAMESPACE_PREFIX, assertAppNamespace } from "../server/memwal.ts";
 
 let failures = 0;
 function check(name: string, condition: boolean, detail?: unknown) {
@@ -124,14 +124,17 @@ check("store accepts its own namespace", appStoreOk);
 // ─── No route takes a namespace from the request ─────────────────────────────
 section("no route accepts a namespace from the request");
 
-// Every file under api/, not one hardcoded path. The route file moved to
-// api/_lib/app.ts when the entry point became a fetch wrapper, and this assertion
+// Every file under api/ and server/, not one hardcoded path. The route file moved to
+// server/app.ts when the entry point became a fetch wrapper, and this assertion
 // silently started reporting "found: 0" — which read as a pass-adjacent curiosity
 // rather than "I am looking in the wrong place". Scanning the tree means the next
 // move cannot quietly void the check.
 const fs = await import("node:fs");
 const path = await import("node:path");
-function readApiTree(dir: string): string {
+function readApiTree(...dirs: string[]): string {
+  return dirs.map(readTree).join("\n");
+}
+function readTree(dir: string): string {
   return fs
     .readdirSync(dir, { withFileTypes: true })
     .map((entry) => {
@@ -141,7 +144,10 @@ function readApiTree(dir: string): string {
     })
     .join("\n");
 }
-const routeSource = readApiTree(new URL("../api", import.meta.url).pathname);
+const routeSource = readApiTree(
+  new URL("../api", import.meta.url).pathname,
+  new URL("../server", import.meta.url).pathname,
+);
 
 // Any of these would mean a caller could choose what to read.
 const FORBIDDEN_PATTERNS: [string, RegExp][] = [

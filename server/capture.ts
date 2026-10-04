@@ -25,7 +25,7 @@ import {
   type CaptureResult,
   type MemoryCandidate,
   type MemoryType,
-} from "../../shared/types.ts";
+} from "../shared/types.ts";
 import { recurringDate, monthForDayOnly, isFullMonthDay } from "./dates.ts";
 
 
