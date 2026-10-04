@@ -30,6 +30,11 @@
 
 import { MemWal } from "@mysten-incubation/memwal";
 import { generateDelegateKey } from "@mysten-incubation/memwal/account";
+import {
+  MEMWAL_REQUEST_TIMEOUT_MS,
+  NAMESPACE,
+  assertAppNamespace,
+} from "../../shared/memwal.ts";
 
 export interface StoredDelegate {
   privateKey: string;
@@ -132,11 +137,25 @@ export async function getOrCreateDelegate(
  *
  * `accountId` is the user's own MemWalAccount object id, resolved from the public
  * AccountRegistry — a chain read, not a key operation, so it needs no signing.
+ *
+ * `namespace` is forced through the same assertion the server used, not merely
+ * defaulted. This function is reachable from browser code, which means from
+ * anything that manages to inject a value, so the guard that stops the app reading
+ * someone else's memories has to live here too rather than only on the server that
+ * no longer exists.
  */
-export function createBrowserMemWal(delegate: StoredDelegate, accountId: string): MemWal {
+export function createBrowserMemWal(
+  delegate: StoredDelegate,
+  accountId: string,
+  namespace: string = NAMESPACE,
+): MemWal {
   return MemWal.create({
     key: delegate.privateKey,
     accountId,
     serverUrl: RELAY_URL,
+    namespace: assertAppNamespace(namespace),
+    // Same reason the server set it: the SDK default is shorter than a mainnet
+    // write actually takes, so an ordinary save looks like a network failure.
+    requestTimeoutMs: MEMWAL_REQUEST_TIMEOUT_MS,
   });
 }
