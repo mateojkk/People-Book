@@ -89,11 +89,33 @@ export function useSignIn() {
       // `signed.bytes` is what the wallet says it actually signed. Sending it
       // lets the server distinguish a genuinely bad signature from a wallet that
       // quietly altered the message — otherwise both look identical from here.
-      await api.post<{ address: string }>("/api/auth/session", {
-        token: challenge.token,
-        signature: signed.signature,
-        signedBytes: signed.bytes,
-      });
+      try {
+        await api.post<{ address: string }>("/api/auth/session", {
+          token: challenge.token,
+          signature: signed.signature,
+          signedBytes: signed.bytes,
+        });
+      } catch (error) {
+        // The challenge outlived its five minutes: mobile wallet-switching,
+        // a demo aside, a slow approval. Fetch a fresh one and ask for the
+        // signature again rather than failing. Once -- if the second expires
+        // too, something else is wrong and the error should show.
+        const code = (error as { code?: string })?.code;
+        const msg = error instanceof Error ? error.message : "";
+        if (code !== "expired" && !/expired/i.test(msg)) throw error;
+        setState({ phase: "signing", message: "That request timed out -- signing again with a fresh one." });
+        const retry = await api.post<ChallengeResponse>("/api/auth/challenge", {
+          address: account.address,
+        });
+        const resigned = await dAppKit.signPersonalMessage({
+          message: new TextEncoder().encode(retry.message),
+        });
+        await api.post<{ address: string }>("/api/auth/session", {
+          token: retry.token,
+          signature: resigned.signature,
+          signedBytes: resigned.bytes,
+        });
+      }
       setState({ phase: "signed_in", address: account.address });
     } catch (error) {
       setState({
