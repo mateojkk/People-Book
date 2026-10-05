@@ -1052,24 +1052,26 @@ app.get("/api/profile", async (c) => {
   const resolved = await resolveStore(c);
   if ("error" in resolved) return resolved.error;
   try {
-    // Supabase first: milliseconds. MemWal fallback keeps this working when the
+    // Database first: milliseconds. MemWal fallback keeps this working when the
     // table is empty (pre-migration) or unreachable, and backfills on the way
     // back so the next read is fast with no backfill script and no user action.
+    // `source` names which path served, so a slow profile is diagnosable from
+    // the response instead of a guess about what is configured where.
     const fast = await readDbProfile(resolved.address);
     if (fast && (fast.name || fast.pronouns || fast.timezone)) {
       profileCache.set(resolved.address, { at: Date.now(), value: fast });
-      return c.json({ profile: fast });
+      return c.json({ profile: fast, source: "db" });
     }
     const cached = profileCache.get(resolved.address);
     if (cached && Date.now() - cached.at < PROFILE_TTL_MS) {
-      return c.json({ profile: cached.value });
+      return c.json({ profile: cached.value, source: "cache" });
     }
     const profile = await readProfile(resolved.store);
     profileCache.set(resolved.address, { at: Date.now(), value: profile });
     if (profile.name || profile.pronouns || profile.timezone) {
       void writeDbProfile(resolved.address, profile).catch(() => {});
     }
-    return c.json({ profile });
+    return c.json({ profile, source: "chain" });
   } catch (error) {
     return toErrorResponse(c, error);
   }
