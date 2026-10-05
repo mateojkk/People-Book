@@ -21,6 +21,7 @@ import { tasksFor, composeNotice, noticeHistory, isTaskMemory } from "./tasks.js
 import { computePatterns } from "./patterns.js";
 import { PeopleBookStore, MemoryNotFoundError } from "../shared/store.js";
 import { isConfigError, isWriteError, NAMESPACE, RECALL_LIMIT, getClient, dropClient } from "./memwal.js";
+import { readDbProfile, writeDbProfile } from "./supabase.js";
 import {
   AccountConfigError,
   delegateIsRegistered,
@@ -1051,12 +1052,23 @@ app.get("/api/profile", async (c) => {
   const resolved = await resolveStore(c);
   if ("error" in resolved) return resolved.error;
   try {
+    // Supabase first: milliseconds. MemWal fallback keeps this working when the
+    // table is empty (pre-migration) or unreachable, and backfills on the way
+    // back so the next read is fast with no backfill script and no user action.
+    const fast = await readDbProfile(resolved.address);
+    if (fast && (fast.name || fast.pronouns || fast.timezone)) {
+      profileCache.set(resolved.address, { at: Date.now(), value: fast });
+      return c.json({ profile: fast });
+    }
     const cached = profileCache.get(resolved.address);
     if (cached && Date.now() - cached.at < PROFILE_TTL_MS) {
       return c.json({ profile: cached.value });
     }
     const profile = await readProfile(resolved.store);
     profileCache.set(resolved.address, { at: Date.now(), value: profile });
+    if (profile.name || profile.pronouns || profile.timezone) {
+      void writeDbProfile(resolved.address, profile).catch(() => {});
+    }
     return c.json({ profile });
   } catch (error) {
     return toErrorResponse(c, error);
