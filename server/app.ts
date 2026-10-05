@@ -1014,10 +1014,13 @@ type ProfileSlot = (typeof PROFILE_SLOTS)[number];
 /** Stable id per slot, so a rewrite revises rather than forks. */
 const profileId = (slot: ProfileSlot) => `profile_${slot}`;
 
-export const profileClaim: Record<ProfileSlot, (value: string) => string> = {
-  name: (v) => `Prefers to be called ${v}.`,
-  pronouns: (v) => `Uses ${v} pronouns.`,
-  timezone: (v) => `Is in the ${v} timezone.`,
+export // Identity now: the value is stored exactly as typed. It used to wrap in
+// sentences for embedding search, but profile slots are read by stable ID and
+// never searched, so the wrapping only misrepresented the user's words.
+const profileClaim: Record<ProfileSlot, (value: string) => string> = {
+  name: (v) => v,
+  pronouns: (v) => v,
+  timezone: (v) => v,
 };
 
 /**
@@ -1034,10 +1037,13 @@ export const profileClaim: Record<ProfileSlot, (value: string) => string> = {
 // name, the timezone dropdown matches nothing, and saves round-trip the whole
 // sentence as if it were the zone. That is exactly the "timezone never sticks"
 // bug: write wraps, read did not unwrap.
-export const profileUnwrap: Record<ProfileSlot, (text: string) => string | undefined> = {
-  name: (t) => /^Prefers to be called (.+)\.$/.exec(t)?.[1],
-  pronouns: (t) => /^Uses (.+) pronouns\.$/.exec(t)?.[1],
-  timezone: (t) => /^Is in the (.+) timezone\.$/.exec(t)?.[1],
+export // Accepts both forms: raw values stored from here on, and legacy sentences
+// stored before ("Is in the UTC timezone." -> "UTC") so nothing already saved
+// goes blank and no migration is needed.
+const profileUnwrap: Record<ProfileSlot, (text: string) => string | undefined> = {
+  name: (t) => /^Prefers to be called (.+)\.$/.exec(t)?.[1] ?? (t || undefined),
+  pronouns: (t) => /^Uses (.+) pronouns\.$/.exec(t)?.[1] ?? (t || undefined),
+  timezone: (t) => /^Is in the (.+) timezone\.$/.exec(t)?.[1] ?? (t || undefined),
 };
 
 async function readProfile(store: PeopleBookStore): Promise<Partial<Record<ProfileSlot, string>>> {
@@ -1095,40 +1101,68 @@ app.post("/api/profile", async (c) => {
   if ("error" in resolved) return resolved.error;
   const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
   try {
+    // Build the new profile from the request alone: no reads, no relayer, no
+    // waiting. The previous version did getById per slot (each a potential full
+    // enumerate) plus writes plus a final readProfile -- minutes for three
+    // strings. What the user typed IS the new profile; nothing needs looking up
+    // to say so.
+    const prev = profileCache.get(resolved.address) ?? {};
+    const fresh: Partial<Record<ProfileSlot, string>> = { ...prev };
     for (const slot of PROFILE_SLOTS) {
       if (!(slot in body)) continue;
       const raw = typeof body[slot] === "string" ? body[slot].trim() : "";
-      const existing = await resolved.store.getById(profileId(slot));
-
-      // Empty clears it. A tombstone rather than a delete, like everything else,
-      // so clearing your name is itself part of the record.
-      if (!raw) {
-        if (existing) await resolved.store.forget(existing.id);
-        continue;
-      }
-      const claim = profileClaim[slot](raw);
-      if (existing) await resolved.store.revise(existing, { text: claim, status: "active" });
-      else {
-        await resolved.store.remember({
-          id: profileId(slot),
-          person: "you",
-          type: "trait",
-          text: claim,
-          status: "active",
-          // Typed by the user, not guessed. Confirmed, or it could never inform
-          // a reply.
-          confidence: "confirmed",
-        });
-      }
+      if (raw) fresh[slot] = raw;
+      else delete fresh[slot];
     }
-    // Refresh both caches with what was just written. Without this the no-expiry
-    // GET cache would serve the pre-save profile forever -- the save would land
-    // on chain and never appear. The value here is authoritative (the store just
-    // confirmed it), so caching it avoids a redundant enumerate for data in hand.
-    const fresh = await readProfile(resolved.store);
+    // Neon synchronously (milliseconds), memory cache synchronously, return.
+    // A Neon failure still returns: the memory cache serves this isolate and the
+    // chain mirror below carries the values, so a failed fast write degrades to
+    // slow reads rather than a failed save.
     profileCache.set(resolved.address, fresh);
-    void writeDbProfile(resolved.address, fresh).catch(() => {});
-    return c.json({ profile: fresh });
+    await writeDbProfile(resolved.address, fresh).catch(() => {});
+    const response = c.json({ profile: fresh });
+
+    // Mirror to the chain in the background: same values, all slots, every
+    // save. Fire-and-forget because the user is already answered -- but NOT
+    // best-effort-and-forgotten: mirroring every slot on every save means a
+    // missed mirror heals on the next save rather than drifting forever. The
+    // on-chain record may lag the fast stores by one save; it never lies, since
+    // it only ever holds values the user actually submitted.
+    void (async () => {
+      try {
+        for (const slot of PROFILE_SLOTS) {
+          const raw = fresh[slot] ?? "";
+          const existing = await resolved.store.getById(profileId(slot));
+          if (!raw) {
+            // Empty clears it. A tombstone rather than a delete, like everything
+            // else, so clearing a field is itself part of the record.
+            if (existing) await resolved.store.forget(existing.id);
+            continue;
+          }
+          const claim = profileClaim[slot](raw);
+          if (existing) await resolved.store.revise(existing, { text: claim, status: "active" });
+          else {
+            await resolved.store.remember({
+              id: profileId(slot),
+              person: "you",
+              type: "trait",
+              text: claim,
+              status: "active",
+              // Typed by the user, not guessed. Confirmed, or it could never
+              // inform a reply.
+              confidence: "confirmed",
+            });
+          }
+        }
+      } catch (error) {
+        console.error(
+          `[profile] background chain mirror failed for ${resolved.address}:`,
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    })();
+
+    return response;
   } catch (error) {
     return toErrorResponse(c, error);
   }

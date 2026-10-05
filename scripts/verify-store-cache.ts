@@ -175,9 +175,13 @@ section("profile wrap and unwrap round-trip");
   ] as const;
   for (const [slot, value] of cases) {
     const wrapped = profileClaim[slot](value);
-    check(`${slot} unwraps to what was written`, profileUnwrap[slot](wrapped) === value, `${wrapped}`);
+    check(`${slot} stores exactly what was typed`, wrapped === value, `${wrapped}`);
+    check(`${slot} reads back what was typed`, profileUnwrap[slot](wrapped) === value);
   }
-  check("a non-matching sentence unwraps to undefined", profileUnwrap.timezone("UTC") === undefined);
+  // Legacy sentences stored before the change still read correctly: no migration,
+  // no blank fields for existing users.
+  check("legacy sentence unwraps", profileUnwrap.timezone("Is in the UTC timezone.") === "UTC");
+  check("legacy sentence unwraps", profileUnwrap.name("Prefers to be called Ada.") === "Ada");
   check("an empty string unwraps to undefined", profileUnwrap.name("") === undefined);
 }
 
