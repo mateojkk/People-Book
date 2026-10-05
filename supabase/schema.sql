@@ -1,4 +1,4 @@
--- People Book profile store — run in the Supabase SQL Editor.
+-- People Book profile store — run in the Neon SQL Editor.
 --
 -- Why a table for three fields: reading them from MemWal costs a full
 -- eight-recall enumerate every time, for data that changes rarely and is read
@@ -34,6 +34,7 @@ create trigger profiles_touch
   before update on profiles
   for each row execute function profiles_touch_updated_at();
 
--- Service key only. No anon access, no RLS policies to misconfigure: the server
--- is the only reader and writer, and the browser never sees these credentials.
+-- Locked down: the server connects with full credentials and the browser never
+-- sees them, so no application role needs access. RLS stays enabled as defense
+-- in depth with no permissive policies.
 alter table profiles enable row level security;

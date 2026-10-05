@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "keygen": "tsx scripts/generate-delegate-key.ts",
-    "verify": "npm run verify:codec && npm run verify:rank && npm run verify:isolation && npm run verify:dates && npm run verify:tasks && npm run verify:patterns && npm run verify:unread && npm run verify:prompt && npm run verify:timezone && npm run verify:opening && npm run verify:store && npm run verify:apicache && npm run verify:supabase && npm run verify:chat",
+    "verify": "npm run verify:codec && npm run verify:rank && npm run verify:isolation && npm run verify:dates && npm run verify:tasks && npm run verify:patterns && npm run verify:unread && npm run verify:prompt && npm run verify:timezone && npm run verify:opening && npm run verify:store && npm run verify:apicache && npm run verify:db && npm run verify:chat",
     "verify:codec": "tsx scripts/verify-memory-codec.ts",
     "verify:rank": "tsx scripts/verify-ranking.ts",
     "check:registry": "tsx scripts/check-registry.ts",
@@ -33,7 +33,7 @@
     "verify:dates": "tsx scripts/verify-dates.ts",
     "verify:deploy": "node scripts/verify-deploy.mjs",
     "verify:apicache": "tsx scripts/verify-api-cache.ts",
-    "verify:supabase": "tsx scripts/verify-supabase.ts"
+    "verify:db": "tsx scripts/verify-db.ts"
   },
   "dependencies": {
     "@fontsource/jetbrains-mono": "^5.3.0",
@@ -41,7 +41,7 @@
     "@mysten-incubation/memwal": "^0.1.8",
     "@mysten/dapp-kit-react": "^2.1.37",
     "@mysten/sui": "^2.33.2",
-    "@supabase/supabase-js": "^2.117.2",
+    "@neondatabase/serverless": "^1.2.0",
     "hono": "^4.13.12",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

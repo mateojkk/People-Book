@@ -21,7 +21,7 @@ import { tasksFor, composeNotice, noticeHistory, isTaskMemory } from "./tasks.js
 import { computePatterns } from "./patterns.js";
 import { PeopleBookStore, MemoryNotFoundError } from "../shared/store.js";
 import { isConfigError, isWriteError, NAMESPACE, RECALL_LIMIT, getClient, dropClient } from "./memwal.js";
-import { readDbProfile, writeDbProfile } from "./supabase.js";
+import { readDbProfile, writeDbProfile } from "./db.js";
 import {
   AccountConfigError,
   delegateIsRegistered,
