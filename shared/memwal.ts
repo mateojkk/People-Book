@@ -59,11 +59,18 @@ export function assertAppNamespace(namespace: string): string {
 }
 
 /**
- * Requests a namespace count this high and the relayer will clamp it. 200 is
- * comfortably above what a personal book reaches (a heavy user is a few
- * hundred memories) while staying inside the documented clamp of 500.
+ * 50, not 200. Each enumerate fans out eight recalls and dedupes by blob id
+ * *after* downloading, so the limit multiplies directly into bandwidth and
+ * decrypt time: 8x200 is up to 1600 blobs per read. Vela does single recalls at
+ * limit 50 against the same relayer in milliseconds; at the scale of every book
+ * that exists (dozens of memories, not hundreds), eight overlapping queries at
+ * 50 cover the same union as eight at 200 for a quarter of the payload.
+ *
+ * If a book ever outgrows this, enumeration reports partial coverage rather
+ * than silently truncating -- that reporting exists precisely so this number
+ * can stay small without lying about completeness.
  */
-export const RECALL_LIMIT = 200;
+export const RECALL_LIMIT = 50;
 
 /**
  * A write took longer than the relayer's default request timeout allows.
