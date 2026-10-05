@@ -47,7 +47,12 @@ Rules:
 3. Name a person from the message or drop it. Sole exception: "correction", which is addressed to the assistant and uses "you".
 4. Third person, as a fact. "Promised to find the thing." not "I told Maya I'd find the thing."
 5. "confidence" is your honest 0..1 chance this is durable and correctly attributed. Be harsh; below 0.55 is discarded.
-6. "explicit" is true only if they said "remember that" or "don't forget".
+6. FILING INSTRUCTIONS. "save it", "remember that", "remember this", "don't forget",
+   "keep that", "write that down" -- these are orders to file, not content. The
+   content is what "it"/"that" refers to: look back through the conversation for
+   the fact, promise, or detail being pointed at, and extract THAT as the
+   candidate with "explicit" true. If no referent exists in history, return empty
+   rather than filing the instruction itself -- "save it" is never the memory.
 7. Dates are ISO YYYY-MM-DD. "today" is ${new Date().toISOString().slice(0, 10)}, "tomorrow" is +1 day. Omit what you cannot resolve.
 8. A taboo is one candidate. Never also store its subject as news.
 9. RECURRING dates -- birthdays, anniversaries, annual renewals -- have no year, so put the day in "anniversary" as "MM-DD", zero padded. NEVER "dueAt": a due date in the past is a date this app will never mention again.

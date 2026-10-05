@@ -8,7 +8,7 @@
  * a network to verify.
  */
 
-import { takeTurn, worthSaving, duplicateKey, resolveWrites } from "../server/chat.js";
+import { takeTurn, worthSaving, duplicateKey, resolveWrites, needsExtraction } from "../server/chat.js";
 import type { PeopleBookStore } from "../shared/store.js";
 import { makeMemory, type MakeMemoryInput } from "../shared/memory-codec.js";
 import type { MemoryCandidate, PersonMemory } from "../shared/types.js";
@@ -183,6 +183,33 @@ function resolveOpts(said = new Set<string>()) {
   check("an ordinary candidate still files", revisions.length === 0 && writable.length === 1);
 }
 
+// ── Small talk never suppresses a life event ───────────────────────────────────
+// A previous version tried to detect "substantive" and dropped 7 of 15 probes,
+// every one a life event scored as small talk ("She's pregnant.", "We broke
+// up."). The rule now matches only provably-empty filler and extracts the rest:
+// false positives cost a call, false negatives lose the memory forever.
+section("extraction skips only the provably empty");
+
+{
+  for (const msg of ["hi bro", "thanks", "ok", "lol", "hey man", "thank you", ""]) {
+    check(`"${msg || "(empty)"}" skips extraction`, needsExtraction(msg) === false, msg);
+  }
+  for (const msg of [
+    "She's pregnant.",
+    "Dad's in hospital.",
+    "I got the job!",
+    "She said yes.",
+    "He blocked me.",
+    "She hates mushrooms.",
+    "We broke up.",
+    "bro got the job",
+    "Mara's birthday is the 14th.",
+    "Don't ever mention the divorce.",
+  ]) {
+    check(`"${msg}" is extracted`, needsExtraction(msg) === true, msg);
+  }
+}
+
 // ── A turn writes and answers ─────────────────────────────────────────────────
 section("a turn files what was said and answers back");
 
@@ -213,17 +240,23 @@ section("a turn files what was said and answers back");
 section("a turn reports its phases in order");
 
 {
-  // Small talk skips the slowest call entirely: nothing to file, nothing to say
-  // about filing. The phases must reflect that rather than narrate work that
-  // did not happen.
+  // Only provably-empty filler skips extraction. "hey, how's it going" contains
+  // non-filler words, so it extracts (fail open) and the model returns [] for it
+  // per rule 2 -- a wasted call, but never a dropped memory. Pure filler skips.
   const s = stubStore();
   const small: string[] = [];
   await takeTurn(
-    { store: s.store, message: "hey, how's it going" },
+    { store: s.store, message: "hey" },
     { onPhase: (phase) => void small.push(phase) },
   );
-  check("small talk skips extracting", !small.includes("extracting") && !small.includes("writing"), small.join(" > "));
+  check("pure filler skips extracting", !small.includes("extracting") && !small.includes("writing"), small.join(" > "));
   check("but still reads and replies", small[0] === "reading" && small[small.length - 1] === "replying", small.join(" > "));
+  const greet: string[] = [];
+  await takeTurn(
+    { store: s.store, message: "hey, how's it going" },
+    { onPhase: (phase) => void greet.push(phase) },
+  );
+  check("a greeting with real words extracts rather than risk dropping", greet.includes("extracting"), greet.join(" > "));
 
   // A substantive message goes through every phase. onPhase("extracting") fires
   // before capture runs, so this holds even without a model -- the phase names

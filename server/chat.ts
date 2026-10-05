@@ -761,25 +761,35 @@ export function duplicateKey(person: string, text: string): string {
  *
  * Exported for tests.
  */
+/**
+ * Whether a message can possibly contain anything worth remembering.
+ *
+ * Inverted from an earlier version that tried to detect "substantive" and
+ * dropped life events for it: "She's pregnant.", "Dad's in hospital.", "We
+ * broke up." all scored as small talk, 7 of 15 probe cases wrong, every one in
+ * the catastrophic direction. A slow greeting annoys; a dropped memory is gone
+ * forever, so the rule now matches only what is provably empty -- a closed set
+ * of greetings, acknowledgments, and address terms -- and extracts everything
+ * else. False positives cost a Groq call; false negatives cost the product.
+ *
+ * Exported for tests.
+ */
+const EMPTY_WORDS = new Set(
+  `hi hey hello yo sup hiya howdy morning evening afternoon
+   ok okay k thanks thank you cool nice lol haha ha hehe yes yeah yep yup no nope nah
+   sure alright bye goodbye bro man dude mate buddy friend pal dear`.split(/\s+/),
+);
+
 export function needsExtraction(message: string): boolean {
-  const text = message.trim();
-  if (!text) return false;
-  // Anything substantive is worth the call. 40 characters of real content can
-  // easily hold a promise, a date, or a fact about someone.
-  if (text.length >= 40) return true;
-  const lower = text.toLowerCase();
-  // Digits mean dates, times, quantities -- the stuff memories are made of.
-  if (/\d/.test(text)) return true;
-  // A capitalized word past the first is usually a name. "call them tomorrow"
-  // has none; "call Maya tomorrow" does.
-  const words = text.split(/\s+/);
-  if (words.slice(1).some((w) => /^[A-ZÀ-Þ][a-zà-þ]/.test(w))) return true;
-  // Commitment and change verbs, even without a name: "I will", "she moved",
-  // "we decided", "don't mention". These are short but load-bearing.
-  if (/\b(will|promise|decided|decide|moved|moving|don't|never|always|remember|remind|forgot|birthday|interview|flight|meeting|call|ring|text|visit)\b/i.test(text)) return true;
-  // What remains is greetings, acknowledgments, reactions, and fragments too
-  // short to hold a who plus a what. None of it can be filed.
-  return false;
+  const tokens = message
+    .toLowerCase()
+    .replace(/[?!.,;:'"()\[\]…—–-]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!tokens.length) return false;
+  // Anything but pure filler can hold a fact. "hi bro" is empty; "bro got the
+  // job" is not, because "got" and "job" survive the filter.
+  return tokens.some((t) => !EMPTY_WORDS.has(t));
 }
 
 /** Narrows an extraction to the candidates worth writing. Exported for tests. */
