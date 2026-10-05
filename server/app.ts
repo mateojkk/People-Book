@@ -1133,6 +1133,13 @@ app.post("/api/profile", async (c) => {
     // thumbnail this endpoint expects.
     if (typeof body.avatar_data === "string" && body.avatar_data.startsWith("data:image/")) {
       if (body.avatar_data.length <= 200_000) fresh.avatar_data = body.avatar_data;
+    } else if (!("avatar_data" in body)) {
+      // A name-only save must not wipe the picture from the cache: fresh was
+      // built from prev, but on a cold isolate prev is empty, so without this
+      // the cache would be set without avatar and shadow the database copy
+      // indefinitely (no expiry to heal it). One millisecond read to preserve it.
+      const current = await readDbProfile(resolved.address).catch(() => null);
+      if (current?.avatar_data) fresh.avatar_data = current.avatar_data;
     }
     // Neon synchronously (milliseconds), memory cache synchronously, return.
     // A Neon failure still returns: the memory cache serves this isolate and the

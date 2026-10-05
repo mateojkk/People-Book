@@ -131,6 +131,7 @@ export function ProfilePanel({ onDisconnect }: { onDisconnect: () => void }) {
       const data = await api.get<{ profile: Profile }>("/api/profile");
       setProfile(data.profile);
       setDraft(data.profile);
+      if (data.profile.avatar_data) setAvatar(data.profile.avatar_data);
     } catch (e) {
       // "revoked" and "no access yet" both mean the same thing from here: the
       // key this browser relies on is not granted on this account. That is
