@@ -777,7 +777,20 @@ app.post("/api/chat", async (c) => {
         }))
     : [];
 
-  const turn = { store: resolved.store, message: body.message.trim(), undoOf, history };
+  // Fresh profile for the reply, from the same fast path as GET /api/profile.
+  // Without this the model addresses the user by whatever the chain mirror last
+  // managed to write -- the name just replaced, for seconds or until the next
+  // successful mirror. Milliseconds here; minutes of confusion without it.
+  const freshProfile = await readDbProfile(resolved.address).catch(() => null);
+  const turn = {
+    store: resolved.store,
+    message: body.message.trim(),
+    undoOf,
+    history,
+    ...(freshProfile && (freshProfile.name || freshProfile.pronouns || freshProfile.timezone)
+      ? { profile: freshProfile }
+      : {}),
+  };
 
   // Streaming when asked for it, JSON when not.
   //

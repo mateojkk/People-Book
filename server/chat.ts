@@ -126,6 +126,14 @@ export interface ChatTurnInput {
   history?: PriorTurn[];
   /** Ids the user already undid, so a retried turn does not resurrect them. */
   undoOf?: string[];
+  /**
+   * Fresh profile from the fast stores, overriding whatever the ledger holds.
+   * The chain mirror lags behind saves (background write, index catch-up), so
+   * without this the reply addresses the user by the name they just replaced --
+   * for seconds at best, until the next successful mirror at worst. Any field
+   * present here wins over the parsed memory; absent fields fall back to it.
+   */
+  profile?: { name?: string; pronouns?: string; timezone?: string };
 }
 
 export interface SavedMemory {
@@ -162,7 +170,7 @@ export interface ChatTurn {
 export type TurnPhase = "reading" | "extracting" | "writing" | "replying";
 
 export async function takeTurn(
-  { store, message, undoOf = [], history = [] }: ChatTurnInput,
+  { store, message, undoOf = [], history = [], profile: profileOverride }: ChatTurnInput,
   hooks: { onDelta?: (text: string) => void; onPhase?: (phase: TurnPhase) => void } = {},
 ): Promise<ChatTurn> {
   hooks.onPhase?.("reading");
@@ -316,7 +324,7 @@ export async function takeTurn(
 
   const cited = pickCitations(after, threadSubjects, volunteered);
   hooks.onPhase?.("replying");
-  const reply = await composeReply({ message, history, memories: after, volunteered, cited, saved, onDelta: hooks.onDelta });
+  const reply = await composeReply({ message, history, memories: after, volunteered, cited, saved, profileOverride, onDelta: hooks.onDelta });
 
   return {
     reply,
@@ -392,6 +400,7 @@ async function composeReply(args: {
    * the reply arrives at reading speed.
    */
   onDelta?: (text: string) => void;
+  profileOverride?: { name?: string; pronouns?: string; timezone?: string };
 }): Promise<string> {
   if (!process.env.GROQ_API_KEY) {
     return fallbackReply(args);
@@ -405,10 +414,18 @@ async function composeReply(args: {
   const corrections = args.memories.filter((m) => m.type === "correction");
   // Profile facts are ids the store minted, so they arrive with the ledger rather
   // than needing a second read.
-  const profile = {
+  const fromLedger = {
     name: args.memories.find((m) => m.id === "profile_name")?.text.replace(/^Prefers to be called |\.$/g, ""),
     pronouns: args.memories.find((m) => m.id === "profile_pronouns")?.text.replace(/^Uses | pronouns\.$/g, ""),
     timezone: args.memories.find((m) => m.id === "profile_timezone")?.text.replace(/^Is in the | timezone\.$/g, ""),
+  };
+  // Fresh values win where present; the ledger is the fallback, not the source.
+  // See ChatTurnInput.profile for why the chain cannot be trusted here.
+  const over = args.profileOverride ?? {};
+  const profile = {
+    name: over.name ?? fromLedger.name,
+    pronouns: over.pronouns ?? fromLedger.pronouns,
+    timezone: over.timezone ?? fromLedger.timezone,
   };
   const ledger = args.memories
     .filter((m) => m.type !== "correction" && !m.id.startsWith("profile_"))

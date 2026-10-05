@@ -378,7 +378,27 @@ async function extractRaw(
   };
   const args = payload.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
   if (!args) return [];
-  return (JSON.parse(args) as { candidates?: unknown }).candidates ?? [];
+  try {
+    return (JSON.parse(args) as { candidates?: unknown }).candidates ?? [];
+  } catch {
+    // The smaller model fumbles tool JSON that the larger one handled: truncated
+    // output, unescaped quotes from the user's own words, trailing commas. One
+    // repair attempt with the broken output shown back -- this recovers the
+    // common cases (cutoff, escaping) and costs one call only when needed, never
+    // on the happy path.
+    const fix = await groqFetch(
+      [
+        {
+          role: "user",
+          content: `Your previous tool call arguments were not valid JSON. Return the SAME candidates as corrected JSON only, no other text:\n${args.slice(0, 4000)}`,
+        },
+      ],
+      { temperature: 0, label: "capture-repair", role: "extract" },
+    );
+    const fixed = (await fix.json()) as { choices?: { message?: { content?: string } }[] };
+    const text = fixed.choices?.[0]?.message?.content ?? "";
+    return (JSON.parse(text) as { candidates?: unknown }).candidates ?? [];
+  }
 }
 
 export { CONFIRM_THRESHOLD };
