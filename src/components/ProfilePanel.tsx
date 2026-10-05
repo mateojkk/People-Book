@@ -14,6 +14,10 @@
  * deliberate and it is the reason the field is small and quiet.
  */
 import { useCallback, useEffect, useState } from "react";
+import { useCurrentAccount, useDAppKit } from "@mysten/dapp-kit-react";
+import { removeDelegateKey } from "@mysten-incubation/memwal/account";
+import { fromHex } from "@mysten/sui/utils";
+import { SuiGrpcClient } from "@mysten/sui/grpc";
 import { api } from "../lib/api.js";
 
 export interface Profile {
@@ -43,6 +47,70 @@ function knownZones(): string[] {
 }
 
 export function ProfilePanel({ onDisconnect }: { onDisconnect: () => void }) {
+  const account = useCurrentAccount();
+  const dAppKit = useDAppKit();
+  const [revoking, setRevoking] = useState(false);
+  const [revokeError, setRevokeError] = useState<string | null>(null);
+
+  const revoke = useCallback(async () => {
+    setRevokeError(null);
+    if (!account?.address) {
+      setRevokeError("Connect a wallet first.");
+      return;
+    }
+    setRevoking(true);
+    try {
+      const network = (import.meta.env.VITE_SUI_NETWORK as "mainnet" | "testnet") || "mainnet";
+      const rpcUrl =
+        (import.meta.env.VITE_SUI_RPC_URL as string) || "https://fullnode.mainnet.sui.io:443";
+      const client = new SuiGrpcClient({ baseUrl: rpcUrl, network });
+      const walletSigner = {
+        address: account.address,
+        signAndExecuteTransaction: async (input: { transaction: unknown }) => {
+          const result = await dAppKit.signAndExecuteTransaction({
+            transaction: input.transaction as never,
+          });
+          const digest =
+            "digest" in result
+              ? result.digest
+              : ("Transaction" in result ? result.Transaction?.digest : undefined) ?? "";
+          return { digest };
+        },
+      };
+      const [{ packageId, registryId }, { publicKey }, who] = await Promise.all([
+        api.get<{ packageId: string; registryId: string }>("/api/account/deployment"),
+        api.get<{ publicKey: string }>("/api/account/delegate-key"),
+        api.get<{ accountId: string | null }>("/api/auth/whoami"),
+      ]);
+      if (!who.accountId) throw new Error("No account found for this address.");
+      // Owner-signed, like the grant. Abort code 1 (not registered) means it is
+      // already gone, which is success -- the end state is what matters, not
+      // whether this call was the one that removed it.
+      try {
+        await removeDelegateKey({
+          packageId,
+          registryId,
+          accountId: who.accountId,
+          publicKey: fromHex(publicKey),
+          walletSigner: walletSigner as never,
+          suiClient: client as never,
+        });
+      } catch (error) {
+        if (!/abort code:\s*1\b/.test(error instanceof Error ? error.message : String(error))) {
+          throw error;
+        }
+      }
+      // The session's key is now useless: every read would 403. End the session
+      // and unplug rather than leaving a signed-in shell that cannot load. No
+      // confirmation line here -- this unmounts on disconnect, and the wallet's
+      // own transaction receipt is the confirmation that matters.
+      onDisconnect();
+    } catch (error) {
+      setRevokeError(error instanceof Error ? error.message : "Revoking failed.");
+    } finally {
+      setRevoking(false);
+    }
+  }, [account?.address, dAppKit, onDisconnect]);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [draft, setDraftRaw] = useState<Profile>({});
   // Any edit retires the "Saved." confirmation: it was true of what was there
@@ -259,8 +327,17 @@ export function ProfilePanel({ onDisconnect }: { onDisconnect: () => void }) {
       <div className="mt-8 border-t border-rule pt-5">
         <button
           type="button"
+          onClick={() => void revoke()}
+          disabled={revoking}
+          className="min-h-11 text-[12.5px] text-faint transition-colors hover:text-stop disabled:opacity-50"
+        >
+          {revoking ? "Revoking — approve in your wallet…" : "Revoke access"}
+        </button>
+        {revokeError && <p className="mt-1.5 text-[12px] leading-5 text-stop">{revokeError}</p>}
+        <button
+          type="button"
           onClick={onDisconnect}
-          className="min-h-11 text-[12.5px] text-faint transition-colors hover:text-stop"
+          className="mt-2 block min-h-11 text-[12.5px] text-faint transition-colors hover:text-muted"
         >
           Log out
         </button>
