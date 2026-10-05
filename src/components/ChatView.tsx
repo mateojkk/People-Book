@@ -38,8 +38,75 @@ const nextId = () => `t${(seq += 1)}`;
  */
 const LIVE_EDGE_PX = 100;
 
-export function ChatView({ onOpenBook }: { onOpenBook?: () => void }) {
-  const [turns, setTurns] = useState<Turn[]>([]);
+/**
+ * Chat history lives in localStorage, keyed by wallet address.
+ *
+ * Turns are already plain data (no functions, no class instances), so they
+ * serialize directly. Cap at 50: beyond that the oldest are the least likely to
+ * be scrolled to, and an unbounded array in a 5MB store is how a long-lived
+ * book eventually breaks its own storage.
+ *
+ * A turn caught mid-flight by a reload (`pending: true`) comes back marked
+ * interrupted, not pending: resuming a stream that no longer exists would hang
+ * forever, and silently dropping the user's message would lie about what was
+ * sent. The message text survives, so nothing they said is lost -- only the
+ * reply that never arrived.
+ */
+export const HISTORY_LIMIT = 50; // exported for tests
+const historyKey = (address: string) => `peoplebook:chat:${address.toLowerCase()}`;
+
+export function loadHistory(address: string | undefined): Turn[] {
+  if (!address) return [];
+  try {
+    const raw = localStorage.getItem(historyKey(address));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Turn[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.slice(-HISTORY_LIMIT).map((t) =>
+      t.pending ? { ...t, pending: false, failed: "Interrupted by a reload. Send again if you still want an answer." } : t,
+    );
+  } catch {
+    return [];
+  }
+}
+
+export function ChatView({ onOpenBook, address }: { onOpenBook?: () => void; address?: string }) {
+  const [turns, setTurns] = useState<Turn[]>(() => loadHistory(address));
+  // The address often arrives after first render (whoami is async). If turns are
+  // still pristine when it does, load then. The length check means a user who
+  // typed before auth resolved keeps what they typed rather than being
+  // overwritten by history -- their words win over the stored ones.
+  const loadedFor = useRef<string | null>(address ?? null);
+  useEffect(() => {
+    if (!address || loadedFor.current === address.toLowerCase()) {
+      // Address already handled, or none yet. Either way, if turns already hold
+      // user-typed content the persist gate below must not wait on a load.
+      if (turns.length > 0) readyToPersist.current = true;
+      return;
+    }
+    loadedFor.current = address.toLowerCase();
+    const stored = loadHistory(address);
+    if (stored.length && turns.length === 0) setTurns(stored);
+    // Persisting is safe from here on: the load was attempted, so a write
+    // cannot clobber history that was never read. User-typed turns were kept
+    // above by the turns.length guard, not overwritten.
+    readyToPersist.current = true;
+  }, [address, turns.length]);
+  // Persist, but never before loading: on address arrival this effect runs before
+  // the load below, and writing the initial empty array would wipe the stored
+  // history it is about to read. `readyToPersist` flips only after a load was
+  // attempted for this address.
+  const readyToPersist = useRef(false);
+  useEffect(() => {
+    if (!address || !readyToPersist.current) return;
+    try {
+      localStorage.setItem(historyKey(address), JSON.stringify(turns.slice(-HISTORY_LIMIT)));
+    } catch {
+      // Full store or private mode: the chat still works for this session, it
+      // just will not survive a reload. Surfaced nowhere, because an error here
+      // would blame the user for a storage problem.
+    }
+  }, [turns, address]);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [pinned, setPinned] = useState(true);

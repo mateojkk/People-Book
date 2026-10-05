@@ -315,7 +315,7 @@ export function Workspace({
         )}
 
         <main className="min-h-0 flex-1">
-          {tab === "talk" && <ChatView onOpenBook={() => setTab("book")} />}
+          {tab === "talk" && <ChatView onOpenBook={() => setTab("book")} address={address} />}
           {tab === "profile" ? (
             // h-full + overflow-y-auto, matching the other tabs: without it the
             // shell's h-screen overflow-hidden clips anything below the fold with
