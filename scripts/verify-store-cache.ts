@@ -160,6 +160,27 @@ section("getById is cached, and still sees tombstones");
   check("and a tombstone is still findable afterwards", (await store.getById(written.id))?.deleted === true);
 }
 
+section("profile wrap and unwrap round-trip");
+// The write wraps ("Is in the UTC timezone.") and the read must unwrap to the
+// value ("UTC"). When these disagreed, the client received a sentence where it
+// expected an IANA name: the dropdown matched nothing and saves round-tripped
+// prose as if it were the zone. "Timezone never sticks" was this.
+{
+  const { profileClaim, profileUnwrap } = await import("../server/app.js");
+  const cases = [
+    ["name", "Ada"],
+    ["pronouns", "she/her"],
+    ["timezone", "UTC"],
+    ["timezone", "America/New_York"],
+  ] as const;
+  for (const [slot, value] of cases) {
+    const wrapped = profileClaim[slot](value);
+    check(`${slot} unwraps to what was written`, profileUnwrap[slot](wrapped) === value, `${wrapped}`);
+  }
+  check("a non-matching sentence unwraps to undefined", profileUnwrap.timezone("UTC") === undefined);
+  check("an empty string unwraps to undefined", profileUnwrap.name("") === undefined);
+}
+
 section("the cache is still a cache");
 {
   // Invalidating on write must not mean re-enumerating on every read, or the fix

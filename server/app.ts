@@ -1014,7 +1014,7 @@ type ProfileSlot = (typeof PROFILE_SLOTS)[number];
 /** Stable id per slot, so a rewrite revises rather than forks. */
 const profileId = (slot: ProfileSlot) => `profile_${slot}`;
 
-const profileClaim: Record<ProfileSlot, (value: string) => string> = {
+export const profileClaim: Record<ProfileSlot, (value: string) => string> = {
   name: (v) => `Prefers to be called ${v}.`,
   pronouns: (v) => `Uses ${v} pronouns.`,
   timezone: (v) => `Is in the ${v} timezone.`,
@@ -1028,12 +1028,24 @@ const profileClaim: Record<ProfileSlot, (value: string) => string> = {
  * writes it as a plain trait -- which it will, because that is a legitimate thing
  * to say.
  */
+// Inverse of profileClaim above. The write wraps the value in a sentence
+// ("Is in the UTC timezone.") and the read must unwrap it back to the value
+// ("UTC") -- otherwise the client receives a sentence where it expects an IANA
+// name, the timezone dropdown matches nothing, and saves round-trip the whole
+// sentence as if it were the zone. That is exactly the "timezone never sticks"
+// bug: write wraps, read did not unwrap.
+export const profileUnwrap: Record<ProfileSlot, (text: string) => string | undefined> = {
+  name: (t) => /^Prefers to be called (.+)\.$/.exec(t)?.[1],
+  pronouns: (t) => /^Uses (.+) pronouns\.$/.exec(t)?.[1],
+  timezone: (t) => /^Is in the (.+) timezone\.$/.exec(t)?.[1],
+};
+
 async function readProfile(store: PeopleBookStore): Promise<Partial<Record<ProfileSlot, string>>> {
   const out: Partial<Record<ProfileSlot, string>> = {};
   for (const slot of PROFILE_SLOTS) {
     const memory = await store.getById(profileId(slot));
     if (memory && memory.deleted !== true) {
-      const value = /^(.*)\.$/.exec(memory.text)?.[1];
+      const value = profileUnwrap[slot](memory.text);
       if (value) out[slot] = value;
     }
   }

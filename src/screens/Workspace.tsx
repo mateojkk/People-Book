@@ -206,8 +206,8 @@ export function Workspace({
             <button
               type="button"
               onClick={onDisconnect}
-              aria-label="Disconnect wallet"
-              title="Disconnect wallet"
+              aria-label="Log out"
+              title="Log out — ends this session and unplugs the wallet"
               className="mx-auto mb-1 grid h-11 w-11 place-items-center rounded-lg text-faint transition-colors hover:bg-panel hover:text-text"
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
