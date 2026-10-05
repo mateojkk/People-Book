@@ -366,6 +366,25 @@ export function ProfilePanel({ onDisconnect }: { onDisconnect: () => void }) {
         >
           Log out
         </button>
+        <button
+          type="button"
+          onClick={() => {
+            if (!window.confirm("Erase this browser's copy? Chat history and the local key go away. Your on-chain memories and grants stay.")) return;
+            try {
+              for (let i = localStorage.length - 1; i >= 0; i--) {
+                const k = localStorage.key(i);
+                if (k && (k.startsWith("peoplebook:") || k.startsWith("pb."))) localStorage.removeItem(k);
+              }
+            } catch {
+              /* already gone or unreadable; the reload below is what matters */
+            }
+            onDisconnect();
+          }}
+          className="mt-2 block min-h-11 text-[12.5px] text-faint transition-colors hover:text-stop lg:hidden"
+          title="Erases chat history, the local key copy, and the avatar from this browser only. On-chain memories and grants are untouched."
+        >
+          Erase this browser&apos;s data
+        </button>
         <p className="mt-1 text-[11px] leading-5 text-faint">
           Ends this session and unplugs the wallet. Access granted on chain stays
           until removed there.
