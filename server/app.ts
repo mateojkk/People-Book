@@ -1040,13 +1040,14 @@ async function readProfile(store: PeopleBookStore): Promise<Partial<Record<Profi
   return out;
 }
 
-// Profile has its own long cache because it is three fields that change rarely,
-// and reading them otherwise costs a full eight-recall enumerate every time.
-// An hour, invalidated on write below -- so a save is visible immediately while
-// every other read is instant. This is safe for exactly the reason a general
-// long TTL would not be: there is exactly one write path, and it clears this.
-const profileCache = new Map<string, { at: number; value: Partial<Record<ProfileSlot, string>> }>();
-const PROFILE_TTL_MS = 3_600_000;
+// Profile is cached with NO expiry, refreshed on write. It is three fields that
+// change rarely, and reading them otherwise costs a full eight-recall enumerate
+// every time the TTL lapses. This is safe for exactly the reason a general
+// no-expiry cache would not be: there is exactly one write path (POST
+// /api/profile below), and it overwrites this entry with what was just saved.
+// Staleness is impossible except via a write outside the app, which does not
+// exist. Process restarts clear it naturally, repopulating from Neon or chain.
+const profileCache = new Map<string, Partial<Record<ProfileSlot, string>>>();
 
 app.get("/api/profile", async (c) => {
   const resolved = await resolveStore(c);
@@ -1059,15 +1060,15 @@ app.get("/api/profile", async (c) => {
     // the response instead of a guess about what is configured where.
     const fast = await readDbProfile(resolved.address);
     if (fast && (fast.name || fast.pronouns || fast.timezone)) {
-      profileCache.set(resolved.address, { at: Date.now(), value: fast });
+      profileCache.set(resolved.address, fast);
       return c.json({ profile: fast, source: "db" });
     }
     const cached = profileCache.get(resolved.address);
-    if (cached && Date.now() - cached.at < PROFILE_TTL_MS) {
-      return c.json({ profile: cached.value, source: "cache" });
+    if (cached) {
+      return c.json({ profile: cached, source: "cache" });
     }
     const profile = await readProfile(resolved.store);
-    profileCache.set(resolved.address, { at: Date.now(), value: profile });
+    profileCache.set(resolved.address, profile);
     if (profile.name || profile.pronouns || profile.timezone) {
       void writeDbProfile(resolved.address, profile).catch(() => {});
     }
@@ -1108,7 +1109,14 @@ app.post("/api/profile", async (c) => {
         });
       }
     }
-    return c.json({ profile: await readProfile(resolved.store) });
+    // Refresh both caches with what was just written. Without this the no-expiry
+    // GET cache would serve the pre-save profile forever -- the save would land
+    // on chain and never appear. The value here is authoritative (the store just
+    // confirmed it), so caching it avoids a redundant enumerate for data in hand.
+    const fresh = await readProfile(resolved.store);
+    profileCache.set(resolved.address, fresh);
+    void writeDbProfile(resolved.address, fresh).catch(() => {});
+    return c.json({ profile: fresh });
   } catch (error) {
     return toErrorResponse(c, error);
   }
