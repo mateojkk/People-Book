@@ -13,7 +13,7 @@
  * this screen that does not follow you to another device. That trade is
  * deliberate and it is the reason the field is small and quiet.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useCurrentAccount, useDAppKit } from "@mysten/dapp-kit-react";
 import { removeDelegateKey } from "@mysten-incubation/memwal/account";
 import { fromHex } from "@mysten/sui/utils";
@@ -24,6 +24,7 @@ export interface Profile {
   name?: string;
   pronouns?: string;
   timezone?: string;
+  avatar_data?: string;
 }
 
 const AVATAR_KEY = "pb.profile.avatar.v1";
@@ -148,8 +149,27 @@ export function ProfilePanel({ onDisconnect }: { onDisconnect: () => void }) {
 
   useEffect(() => {
     void load();
-    setAvatar(readAvatar());
   }, [load]);
+
+  // One-time migration: an avatar stored locally before avatars moved to the
+  // database uploads on next save rather than being abandoned. After that the
+  // local copy is removed so the two cannot disagree.
+  const pendingAvatar = useRef<string | null>(null);
+  useEffect(() => {
+    if (pendingAvatar.current !== null) return;
+    const local = readAvatar();
+    if (local) {
+      pendingAvatar.current = local;
+      setAvatar(local);
+      try {
+        localStorage.removeItem(AVATAR_KEY);
+      } catch {
+        /* already read; the value is held above regardless */
+      }
+    } else {
+      pendingAvatar.current = "";
+    }
+  }, []);
 
   const save = async () => {
     setState("saving");
@@ -162,9 +182,15 @@ export function ProfilePanel({ onDisconnect }: { onDisconnect: () => void }) {
         const next = (draft[key] ?? "").trim();
         if (next !== (profile?.[key] ?? "").trim()) patch[key] = next;
       }
+      const avatarToSave = pendingAvatar.current;
+      if (avatarToSave) (patch as Record<string, string>).avatar_data = avatarToSave;
       if (Object.keys(patch).length) {
         const data = await api.post<{ profile: Profile }>("/api/profile", patch);
         setProfile(data.profile);
+        if (data.profile.avatar_data) {
+          setAvatar(data.profile.avatar_data);
+          pendingAvatar.current = "";
+        }
       }
       setState("saved");
     } catch (e) {
@@ -189,12 +215,11 @@ export function ProfilePanel({ onDisconnect }: { onDisconnect: () => void }) {
         if (!ctx) return;
         ctx.drawImage(image, (image.width - side) / 2, (image.height - side) / 2, side, side, 0, 0, 128, 128);
         const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
-        try {
-          localStorage.setItem(AVATAR_KEY, dataUrl);
-          setAvatar(dataUrl);
-        } catch {
-          setError("That image is too large to store in this browser.");
-        }
+        // Held for the next save, which carries it to the database. Shown
+        // immediately so the picker feels instant; persisted on Save with the
+        // rest of the profile rather than in a separate request.
+        pendingAvatar.current = dataUrl;
+        setAvatar(dataUrl);
       };
       image.src = String(reader.result);
     };

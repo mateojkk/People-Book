@@ -38,3 +38,8 @@ create trigger profiles_touch
 -- sees them, so no application role needs access. RLS stays enabled as defense
 -- in depth with no permissive policies.
 alter table profiles enable row level security;
+
+-- Avatar lives here, not localStorage: a picture that vanishes when you change
+-- browsers is a broken demo and a confused user. 128px downscaled client-side
+-- before upload, so values stay in the single-digit kilobytes.
+alter table profiles add column if not exists avatar_data text;

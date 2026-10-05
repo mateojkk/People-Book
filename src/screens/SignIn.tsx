@@ -163,7 +163,7 @@ export function SignIn({
               className="underline decoration-dotted underline-offset-2 transition-colors hover:text-muted"
               title="Ends this session and unplugs the wallet. Access granted on chain stays until removed there."
             >
-              Disconnect wallet
+              Log out
             </button>
           </p>
         </section>

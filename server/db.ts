@@ -37,6 +37,8 @@ export interface DbProfile {
   pronouns?: string;
   timezone?: string;
   memwal_account_id?: string;
+  /** Downscaled data URL. DB-only by design: binary has no place in memories. */
+  avatar_data?: string;
 }
 
 type Sql = NeonQueryFunction<false, false>;
@@ -72,6 +74,7 @@ function clean(row: Record<string, unknown>): DbProfile {
   if (typeof row.memwal_account_id === "string" && row.memwal_account_id) {
     out.memwal_account_id = row.memwal_account_id;
   }
+  if (typeof row.avatar_data === "string" && row.avatar_data) out.avatar_data = row.avatar_data;
   return out;
 }
 
@@ -80,7 +83,7 @@ export async function readDbProfile(address: string): Promise<DbProfile | null> 
   if (!q) return null;
   try {
     const rows = (await q`
-      SELECT name, pronouns, timezone, memwal_account_id
+      SELECT name, pronouns, timezone, memwal_account_id, avatar_data
       FROM profiles WHERE address = ${address.toLowerCase()}
     `) as Record<string, unknown>[];
     if (!rows.length) return null;
@@ -96,13 +99,14 @@ export async function writeDbProfile(address: string, profile: DbProfile): Promi
   if (!q) return false;
   try {
     await q`
-      INSERT INTO profiles (address, name, pronouns, timezone, memwal_account_id, updated_at)
+      INSERT INTO profiles (address, name, pronouns, timezone, memwal_account_id, avatar_data, updated_at)
       VALUES (
         ${address.toLowerCase()},
         ${profile.name ?? null},
         ${profile.pronouns ?? null},
         ${profile.timezone ?? null},
         ${profile.memwal_account_id ?? null},
+        ${profile.avatar_data ?? null},
         NOW()
       )
       ON CONFLICT (address) DO UPDATE SET
@@ -110,6 +114,7 @@ export async function writeDbProfile(address: string, profile: DbProfile): Promi
         pronouns = EXCLUDED.pronouns,
         timezone = EXCLUDED.timezone,
         memwal_account_id = COALESCE(EXCLUDED.memwal_account_id, profiles.memwal_account_id),
+        avatar_data = COALESCE(EXCLUDED.avatar_data, profiles.avatar_data),
         updated_at = NOW()
     `;
     return true;
