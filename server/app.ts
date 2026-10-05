@@ -1107,12 +1107,19 @@ app.post("/api/profile", async (c) => {
     // strings. What the user typed IS the new profile; nothing needs looking up
     // to say so.
     const prev = profileCache.get(resolved.address) ?? {};
-    const fresh: Partial<Record<ProfileSlot, string>> = { ...prev };
+    const fresh: Partial<Record<ProfileSlot, string>> & { avatar_data?: string } = { ...prev };
     for (const slot of PROFILE_SLOTS) {
       if (!(slot in body)) continue;
       const raw = typeof body[slot] === "string" ? body[slot].trim() : "";
       if (raw) fresh[slot] = raw;
       else delete fresh[slot];
+    }
+    // Avatar rides along but never touches the chain mirror below: binary has
+    // no place in memories (embedding, size, decrypt cost). DB and memory
+    // cache only. Size-guarded -- a data URL past ~200KB is not the downscaled
+    // thumbnail this endpoint expects.
+    if (typeof body.avatar_data === "string" && body.avatar_data.startsWith("data:image/")) {
+      if (body.avatar_data.length <= 200_000) fresh.avatar_data = body.avatar_data;
     }
     // Neon synchronously (milliseconds), memory cache synchronously, return.
     // A Neon failure still returns: the memory cache serves this isolate and the
