@@ -210,6 +210,33 @@ section("extraction skips only the provably empty");
   }
 }
 
+// ── Broken model JSON is salvaged locally before re-asking ───────────────────
+// The smaller model truncates output and leaves trailing commas that the larger
+// one never produced. Each shape below is asserted: fixable locally stays
+// local (no second call spent), unfixable stays undefined for the model repair.
+section("salvageJson fixes mechanics, never meaning");
+
+{
+  const { salvageJson } = await import("../server/capture.js");
+  const parses = (input: string): boolean => {
+    const out = salvageJson(input);
+    if (out === undefined) return false;
+    try {
+      JSON.parse(out);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  check("trailing comma", parses('{"candidates": [{"a": 1},]}'));
+  check("truncated array", parses('{"candidates": [{"a": 1}'));
+  check("truncated object", parses('{"candidates": [{"a": 1'));
+  check("valid passes through", parses('{"candidates": []}'));
+  check("garbage stays undefined", !parses("not json at all"));
+  check("cut inside a string stays undefined", !parses('{"candidates": [{"a": "abc}'));
+  check("deep truncation stays undefined", !parses('{"candidates": [{"a": {"b": {"c": 1'));
+}
+
 // ── A turn writes and answers ─────────────────────────────────────────────────
 section("a turn files what was said and answers back");
 

@@ -279,6 +279,85 @@ export async function capture(
   }
 }
 
+/**
+ * Repairs the two mechanical JSON failures locally, without a second model call.
+ *
+ * Returns undefined when there is nothing salvageable, in which case the caller
+ * falls through to asking the model to fix it. Deliberately narrow: it handles
+ * truncation (cut off mid-stream, close what is open) and trailing commas, and
+ * nothing else. Anything cleverer risks "fixing" a response into a different
+ * meaning, which for a memory pipeline is worse than failing loudly.
+ */
+export function salvageJson(broken: string): string | undefined {
+  // Trailing commas before } or ]: legal in no JSON dialect, emitted often.
+  const decomma = broken.replace(/,(\s*[}\]])/g, "$1");
+  try {
+    JSON.parse(decomma);
+    return decomma;
+  } catch {
+    // Truncation: walk the string tracking open brackets/braces (respecting
+    // string boundaries and escapes), then close whatever is still open.
+    // First pass: is it merely unclosed (not cut inside a string)? Track
+    // string state to the end; a cutoff inside a value is unrecoverable locally.
+    let inString = false;
+    let escaped = false;
+    for (const ch of decomma) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') inString = !inString;
+    }
+    // Unclosed and not inside a string: close every open bracket in reverse
+    // order. This recovers truncation mid-array or mid-object, which is the
+    // common cutoff shape. It cannot recover a cut inside a string value itself
+    // (half a fact is not a fact) -- that correctly stays undefined and falls
+    // through to the model repair.
+    if (!inString) {
+      const stack: string[] = [];
+      let s2InString = false;
+      let s2Escaped = false;
+      for (const ch of decomma) {
+        if (s2Escaped) {
+          s2Escaped = false;
+          continue;
+        }
+        if (ch === "\\") {
+          s2Escaped = true;
+          continue;
+        }
+        if (ch === '"') {
+          s2InString = !s2InString;
+          continue;
+        }
+        if (s2InString) continue;
+        if (ch === "{" || ch === "[") stack.push(ch);
+        else if (ch === "}" || ch === "]") stack.pop();
+      }
+      const closers = stack
+        .reverse()
+        .map((o) => (o === "{" ? "}" : "]"))
+        .join("");
+      // Bound the guess: more than three unclosed levels means structure was
+      // lost, not just closers, and closing it would invent candidates.
+      if (closers.length > 0 && closers.length <= 3) {
+        try {
+          const attempt = decomma + closers;
+          JSON.parse(attempt);
+          return attempt;
+        } catch {
+          return undefined;
+        }
+      }
+    }
+    return undefined;
+  }
+}
+
 async function extractRaw(
   message: string,
   knownPeople: readonly string[],
@@ -386,6 +465,14 @@ async function extractRaw(
   try {
     return (JSON.parse(args) as { candidates?: unknown }).candidates ?? [];
   } catch {
+    const salvaged = salvageJson(args);
+    if (salvaged) {
+      try {
+        return (JSON.parse(salvaged) as { candidates?: unknown }).candidates ?? [];
+      } catch {
+        // Falls through to the model repair below.
+      }
+    }
     // The smaller model fumbles tool JSON that the larger one handled: truncated
     // output, unescaped quotes from the user's own words, trailing commas. One
     // repair attempt with the broken output shown back -- this recovers the
