@@ -73,7 +73,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
  * Errors are never cached. A failed GET must retry next time, not serve the
  * failure for thirty seconds.
  */
-const GET_TTL_MS = 30_000;
+// 60s to match the server. Same guarantee (any mutation busts), so tab switches
+// stay instant for a full minute of browsing instead of half of one.
+const GET_TTL_MS = 60_000;
 const getCache = new Map<string, { at: number; value: unknown }>();
 const getInflight = new Map<string, Promise<unknown>>();
 

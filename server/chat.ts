@@ -170,11 +170,18 @@ export async function takeTurn(
   const known = [...new Set(memories.map((m) => m.person))];
 
   // ── 1. Notice and write ─────────────────────────────────────────────────────
-  hooks.onPhase?.("extracting");
-  const openPromises = memories
-    .filter((m) => m.type === "promise" && m.status === "open")
-    .map((m) => ({ id: m.id, person: m.person, text: m.text }));
-  const extraction = await capture(message, known, history, openPromises);
+  // Small talk skips the slowest call entirely. needsExtraction fails open, so
+  // anything that might hold a fact still goes through capture() normally.
+  let extraction: Awaited<ReturnType<typeof capture>>;
+  if (needsExtraction(message)) {
+    hooks.onPhase?.("extracting");
+    const openPromises = memories
+      .filter((m) => m.type === "promise" && m.status === "open")
+      .map((m) => ({ id: m.id, person: m.person, text: m.text }));
+    extraction = await capture(message, known, history, openPromises);
+  } else {
+    extraction = { candidates: [] };
+  }
 
   const saved: SavedMemory[] = [];
 
@@ -718,6 +725,44 @@ export function normaliseForCompare(text: string): string {
  */
 export function duplicateKey(person: string, text: string): string {
   return `${person.toLowerCase()}::${normaliseForCompare(text)}`;
+}
+
+/**
+ * Whether a message can possibly contain anything worth remembering.
+ *
+ * A greeting, an acknowledgment, a laugh -- none of these can produce a memory,
+ * yet each one was paying for the slowest call in the turn (extraction) before
+ * the reply even started. Skipping it roughly halves the wait on exactly the
+ * messages where waiting feels most pointless.
+ *
+ * Conservative on purpose, and fails open: when in doubt it returns true and the
+ * message is extracted normally. A slow greeting is annoying; a dropped memory
+ * is the product failing. So the rules only match what cannot possibly hold a
+ * fact -- short, name-free, date-free, commitment-free -- and "thanks for
+ * reminding me to call them tomorrow" sails through because it has a name-like
+ * word, a commitment verb, and a date.
+ *
+ * Exported for tests.
+ */
+export function needsExtraction(message: string): boolean {
+  const text = message.trim();
+  if (!text) return false;
+  // Anything substantive is worth the call. 40 characters of real content can
+  // easily hold a promise, a date, or a fact about someone.
+  if (text.length >= 40) return true;
+  const lower = text.toLowerCase();
+  // Digits mean dates, times, quantities -- the stuff memories are made of.
+  if (/\d/.test(text)) return true;
+  // A capitalized word past the first is usually a name. "call them tomorrow"
+  // has none; "call Maya tomorrow" does.
+  const words = text.split(/\s+/);
+  if (words.slice(1).some((w) => /^[A-ZÀ-Þ][a-zà-þ]/.test(w))) return true;
+  // Commitment and change verbs, even without a name: "I will", "she moved",
+  // "we decided", "don't mention". These are short but load-bearing.
+  if (/\b(will|promise|decided|decide|moved|moving|don't|never|always|remember|remind|forgot|birthday|interview|flight|meeting|call|ring|text|visit)\b/i.test(text)) return true;
+  // What remains is greetings, acknowledgments, reactions, and fragments too
+  // short to hold a who plus a what. None of it can be filed.
+  return false;
 }
 
 /** Narrows an extraction to the candidates worth writing. Exported for tests. */

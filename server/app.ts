@@ -1039,11 +1039,25 @@ async function readProfile(store: PeopleBookStore): Promise<Partial<Record<Profi
   return out;
 }
 
+// Profile has its own long cache because it is three fields that change rarely,
+// and reading them otherwise costs a full eight-recall enumerate every time.
+// An hour, invalidated on write below -- so a save is visible immediately while
+// every other read is instant. This is safe for exactly the reason a general
+// long TTL would not be: there is exactly one write path, and it clears this.
+const profileCache = new Map<string, { at: number; value: Partial<Record<ProfileSlot, string>> }>();
+const PROFILE_TTL_MS = 3_600_000;
+
 app.get("/api/profile", async (c) => {
   const resolved = await resolveStore(c);
   if ("error" in resolved) return resolved.error;
   try {
-    return c.json({ profile: await readProfile(resolved.store) });
+    const cached = profileCache.get(resolved.address);
+    if (cached && Date.now() - cached.at < PROFILE_TTL_MS) {
+      return c.json({ profile: cached.value });
+    }
+    const profile = await readProfile(resolved.store);
+    profileCache.set(resolved.address, { at: Date.now(), value: profile });
+    return c.json({ profile });
   } catch (error) {
     return toErrorResponse(c, error);
   }

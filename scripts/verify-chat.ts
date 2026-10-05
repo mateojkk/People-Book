@@ -213,10 +213,24 @@ section("a turn files what was said and answers back");
 section("a turn reports its phases in order");
 
 {
+  // Small talk skips the slowest call entirely: nothing to file, nothing to say
+  // about filing. The phases must reflect that rather than narrate work that
+  // did not happen.
   const s = stubStore();
-  const phases: string[] = [];
+  const small: string[] = [];
   await takeTurn(
     { store: s.store, message: "hey, how's it going" },
+    { onPhase: (phase) => void small.push(phase) },
+  );
+  check("small talk skips extracting", !small.includes("extracting") && !small.includes("writing"), small.join(" > "));
+  check("but still reads and replies", small[0] === "reading" && small[small.length - 1] === "replying", small.join(" > "));
+
+  // A substantive message goes through every phase. onPhase("extracting") fires
+  // before capture runs, so this holds even without a model -- the phase names
+  // the work being attempted, not its outcome.
+  const phases: string[] = [];
+  await takeTurn(
+    { store: s.store, message: "Mara's birthday is the 14th and I promised to call her that morning." },
     { onPhase: (phase) => void phases.push(phase) },
   );
   check("reading comes first", phases[0] === "reading", phases.join(" > "));

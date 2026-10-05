@@ -150,9 +150,19 @@ export default function App() {
     // Fire and forget, failures silent: a prefetch that errors must not surface
     // anywhere, because the tab will fetch on mount exactly as before. This only
     // ever makes things faster, never different.
-    for (const path of ["/api/today", "/api/memories", "/api/profile", "/api/corrections", "/api/patterns"]) {
-      void api.get(path).catch(() => {});
-    }
+    // Sequential, not concurrent. Five full reads at once from a cold start fan
+    // out across isolates with no shared cache -- five enumerates, forty recalls
+    // in the same second, which is the throttle pattern. One after another costs
+    // seconds once and never stampedes.
+    void (async () => {
+      for (const path of ["/api/today", "/api/memories", "/api/profile", "/api/corrections", "/api/patterns"]) {
+        try {
+          await api.get(path);
+        } catch {
+          // Silent by design (see above): the tab fetches on mount as before.
+        }
+      }
+    })();
   }, [ready, who?.signedIn, who?.address, push]);
 
   /**

@@ -117,7 +117,12 @@ async function withDeadline<T>(work: Promise<T>, ms: number, what: string): Prom
  * only thing being avoided is asking the relayer the same question twice in one
  * render.
  */
-const ENUMERATION_TTL_MS = 15_000;
+// 60s, not 15s. Every write path invalidates with a generation bump, so a longer
+// TTL only stretches quiet periods -- it cannot serve post-write state. 15s meant
+// a tab switch after a short pause paid a full eight-recall enumerate; 60s keeps
+// normal browsing inside the cache. The relayer's own index lag after a write
+// (measured 22.6s) dwarfs this either way.
+const ENUMERATION_TTL_MS = 60_000;
 
 /**
  * `all` is every revision of every memory, uncollapsed. `memories` is the same
