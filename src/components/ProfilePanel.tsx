@@ -337,7 +337,7 @@ export function ProfilePanel({ onDisconnect }: { onDisconnect: () => void }) {
         <button
           type="button"
           onClick={onDisconnect}
-          className="mt-2 block min-h-11 text-[12.5px] text-faint transition-colors hover:text-muted"
+          className="mt-2 block min-h-11 text-[12.5px] text-faint transition-colors hover:text-muted lg:hidden"
         >
           Log out
         </button>

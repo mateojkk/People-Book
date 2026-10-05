@@ -242,7 +242,7 @@ export function Workspace({
                 onClick={onDisconnect}
                 className="mt-1.5 ml-1.5 text-[11px] text-faint transition-colors hover:text-muted"
               >
-                Disconnect
+                Log out
               </button>
             </div>
           )}
