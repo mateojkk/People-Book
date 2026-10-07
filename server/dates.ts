@@ -191,3 +191,51 @@ function validMonthDay(month: number, day: number): string | null {
 function pad(n: number): string {
   return String(n).padStart(2, "0");
 }
+/**
+ * Renders an ISO date relative to now, deterministically.
+ *
+ * Dates reach the model as prose ("tomorrow") that goes stale the next day, and
+ * asking the model to do the arithmetic produces confident wrong answers about
+ * which day that was. So the arithmetic lives here: the ledger carries both the
+ * ISO date and this rendering, and the reply prompt anchors today explicitly.
+ * The model reports what it is told; it never computes a date.
+ *
+ * Returns null for missing or unparseable input, so callers omit rather than
+ * invent. Timezone-naive by design: callers pass "today" already resolved in
+ * the user's zone (see below), keeping zone logic in one place.
+ */
+export function relativeDayLabel(isoDate: string | undefined, todayISO: string): string | null {
+  if (!isoDate || !/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(todayISO)) return null;
+  const [y1, m1, d1] = todayISO.split("-").map(Number) as [number, number, number];
+  const [y2, m2, d2] = isoDate.split("-").map(Number) as [number, number, number];
+  const days = Math.round(
+    (Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1)) / 86_400_000,
+  );
+  if (days === 0) return "today";
+  if (days === 1) return "tomorrow";
+  if (days === -1) return "yesterday";
+  if (days > 1) return `in ${days} days`;
+  return `${-days} days ago`;
+}
+
+/**
+ * Today's date in ISO, resolved in the given IANA zone (or UTC).
+ *
+ * Centralised so every "today" in prompts, nudges, and ledger lines agrees.
+ * Two different todays -- server UTC midnight versus the user's evening -- is
+ * how "tomorrow" survives a day boundary and how birthdays arrive a day early.
+ */
+export function todayISO(timeZone?: string): string {
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: timeZone || "UTC",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+    return parts; // en-CA yields YYYY-MM-DD directly.
+  } catch {
+    return new Date().toISOString().slice(0, 10);
+  }
+}

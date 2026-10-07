@@ -39,6 +39,7 @@
  */
 
 import { capture } from "./capture.js";
+import { relativeDayLabel, todayISO } from "./dates.js";
 import { computePatterns, type Pattern } from "./patterns.js";
 import { groqFetch } from "./groq.js";
 import { computeNudges } from "./ranking.js";
@@ -444,10 +445,18 @@ async function composeReply(args: {
     pronouns: over.pronouns ?? fromLedger.pronouns,
     timezone: over.timezone ?? fromLedger.timezone,
   };
+  const today = todayISO(args.profileOverride?.timezone ?? profile.timezone);
+  const weekday = new Date(`${today}T12:00:00Z`).toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" });
   const ledger = args.memories
     .filter((m) => m.type !== "correction" && !m.id.startsWith("profile_"))
     .slice(0, 40)
-    .map((m) => `- ${m.person} | ${m.type} | ${m.text}`)
+    .map((m) => {
+      // The ISO date plus its rendering as of today: the model reports these
+      // rather than computing from prose that went stale days ago.
+      const due = m.dueAt ? relativeDayLabel(m.dueAt, today) : null;
+      const when = m.dueAt ? ` | due ${m.dueAt}${due ? ` (${due})` : ""}` : "";
+      return `- ${m.person} | ${m.type} | ${m.text}${when}`;
+    })
     .join("\n");
   const standing = formatCorrections(corrections) + formatProfile({
     name: profile.name || undefined,
@@ -476,6 +485,7 @@ async function composeReply(args: {
               args.volunteered.length
                 ? `\nWorth bringing up unprompted: ${args.volunteered.map((n) => n.text).join(" | ")}`
                 : "",
+              `\nToday is ${today} (${weekday}). Treat every relative date above against this day, not against when the words were written.`,
               "\nReply as their assistant. Two or three sentences, plain prose.",
           ].filter(Boolean).join("\n"),
         },

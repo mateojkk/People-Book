@@ -111,6 +111,21 @@ months.forEach((name, i) => {
 });
 check("all twelve", allGood);
 
+section("relative day labels never compute in the model");
+{
+  const { relativeDayLabel, todayISO } = await import("../server/dates.js");
+  const today = "2026-10-08";
+  check("today", relativeDayLabel("2026-10-08", today) === "today");
+  check("tomorrow", relativeDayLabel("2026-10-09", today) === "tomorrow");
+  check("yesterday", relativeDayLabel("2026-10-07", today) === "yesterday");
+  check("in N days", relativeDayLabel("2026-10-13", today) === "in 5 days");
+  check("N days ago", relativeDayLabel("2026-10-05", today) === "3 days ago");
+  check("missing is null, not invented", relativeDayLabel(undefined, today) === null);
+  check("malformed is null, not invented", relativeDayLabel("tomorrow", today) === null);
+  const zoned = todayISO("America/New_York");
+  check("todayISO resolves in-zone as YYYY-MM-DD", /^\d{4}-\d{2}-\d{2}$/.test(zoned), zoned);
+}
+
 process.stdout.write("\n");
 if (failures > 0) {
   process.stdout.write(`${failures} of ${checks} checks FAILED\n`);

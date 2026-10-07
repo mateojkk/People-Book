@@ -316,10 +316,22 @@ section("a turn reports its phases in order");
   check("reading comes first", phases[0] === "reading", phases.join(" > "));
   check("extraction is named, not hidden", phases.includes("extracting"), phases.join(" > "));
   check("the reply phase follows", phases[phases.length - 1] === "replying", phases.join(" > "));
-  // Without the model nothing is confident enough to write, which is exactly the
-  // common case: most messages file nothing, so announcing "writing" would lie
-  // about what the wait was for.
-  check("writing is skipped when nothing is writable", !phases.includes("writing"), phases.join(" > "));
+  // Writing fires iff something was actually filed. Without a model nothing is
+  // confident enough to write, so it must be absent; with a model the same
+  // message may file and must announce it. Assert the consistency against the
+  // turn result -- the suite runs both with and without a key.
+  const s2 = stubStore();
+  const phases2: string[] = [];
+  const turn2 = await takeTurn(
+    { store: s2.store, message: "Mara's birthday is the 14th and I promised to call her that morning." },
+    { onPhase: (phase) => void phases2.push(phase) },
+  );
+  const filed = turn2.saved.length > 0;
+  check(
+    filed ? "writing announced when something filed" : "writing skipped when nothing filed",
+    phases2.includes("writing") === filed,
+    `${phases2.join(" > ")} (saved ${turn2.saved.length})`,
+  );
   const order = ["reading", "extracting", "writing", "replying"];
   const inOrder = phases.every((p, i) => {
     if (i === 0) return true;
