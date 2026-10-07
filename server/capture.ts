@@ -47,22 +47,13 @@ Rules:
 3. Name a person from the message or drop it. Sole exception: "correction", which is addressed to the assistant and uses "you".
 4. Third person, as a fact. "Promised to find the thing." not "I told Maya I'd find the thing."
 5. "confidence" is your honest 0..1 chance this is durable and correctly attributed. Be harsh; below 0.55 is discarded.
-6. FILING INSTRUCTIONS. "save it", "remember that", "remember this", "don't forget",
-   "keep that", "write that down" -- these are orders to file, not content. The
-   content is what "it"/"that" refers to: look back through the conversation for
-   the fact, promise, or detail being pointed at, and extract THAT as the
-   candidate with "explicit" true. If no referent exists in history, return empty
-   rather than filing the instruction itself -- "save it" is never the memory.
+6. "save it", "remember that/this", "don't forget", "keep/write that down" are
+   orders to file: extract what "it" points at from history with "explicit" true.
+   No referent in history -> empty, never the instruction itself.
 7. Dates are ISO YYYY-MM-DD. "today" is ${new Date().toISOString().slice(0, 10)}, "tomorrow" is +1 day. Omit what you cannot resolve.
 8. A taboo is one candidate. Never also store its subject as news.
-9. RECURRING dates -- birthdays, anniversaries, annual renewals -- have no year, so put the day in "anniversary" as "MM-DD", zero padded. NEVER "dueAt": a due date in the past is a date this app will never mention again.
-    "Mara's birthday is the 14th"        -> anniversary "11-14"
-    "Dev gets married on the 2nd of June" -> anniversary "06-02"
-    A one-off ("her flight is on the 3rd") is "dueAt", and "anniversary" is left out.
-10. CORRECTIONS. One "correction" when they correct how you work. Its value is persisting across unrelated future tasks.
-    - "text" holds ONLY the standing instruction, stripped of the "no," and the incident behind it.
-        "no, never prompt text that didn't happen" -> "Never prompt text that did not happen."
-        "stop using Inter, it's a wide face"        -> "Do not use Inter."  reason: "It is a wide face and the measure breaks."
+9. Recurring dates (birthdays etc.) go in "anniversary" as "MM-DD", never "dueAt" (a past due date is never mentioned again). One-offs ("flight on the 3rd") go in "dueAt".
+10. CORRECTIONS: one "correction" per standing instruction. "text" holds ONLY the rule ("Do not use Inter."), never the incident; the reason goes in "reason".
     - "remember <something>" about how to work is a correction, not a trait. Dropping this example from the list made "remember I hate emoji" come back as a trait, which is the one regression the trim caused.
     - "reason" holds WHY, in their own words, when given. This is the point of the type: a bare instruction gets broken the first time it looks inapplicable, a reason is recognisable when the same problem returns. Never invent one -- omit it if none was given.
     - High "confidence", status "active".
@@ -372,9 +363,9 @@ async function extractRaw(
           content: [
             `People already in the book: ${knownPeople.length ? knownPeople.join(", ") : "(none yet)"}`,
             openPromises.length
-              ? `Open promises (things they said they would do and have not reported done):\n${openPromises
+              ? `Open promises (said they would do, not yet reported done):\n${openPromises
                   .map((p) => `- [${p.id}] ${p.person}: ${p.text}`)
-                  .join("\n")}\nIf their message reports completing one of these, set fulfillsPromiseId to its [id] and status to "kept". Only an id from this list; anything else is ignored. If it reports something new, leave fulfillsPromiseId unset.`
+                  .join("\n")}\nMessage reports completing one: fulfillsPromiseId=[id], status "kept". Other ids ignored. New thing: unset.`
               : "",
             // Enough of the thread for a pronoun to resolve, and no more: this is
             // extraction, and a long transcript mostly adds text to mis-attribute.
@@ -411,10 +402,7 @@ async function extractRaw(
                       person: { type: "string", description: "Who the fact is about. Must be one of the people named in the message, or 'you'." },
                       type: { type: "string", enum: [...VALID_TYPES] },
                       status: { type: "string", enum: ["open", "kept", "active"] },
-                      fulfillsPromiseId: {
-                        type: "string",
-                        description: "The [id] of an open promise above that this message reports as done. Unset for anything new.",
-                      },
+                      fulfillsPromiseId: { type: "string", description: "Open-promise [id] this completes, else unset." },
                       text: { type: "string", description: "The fact, third person, self-contained." },
                       occurredAt: { type: "string", description: "ISO date it happened, if known." },
                       dueAt: { type: "string", description: "ISO date it becomes due, if known." },

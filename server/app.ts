@@ -748,6 +748,7 @@ app.post("/api/chat", async (c) => {
     message?: unknown;
     undoOf?: unknown;
     history?: unknown;
+    retry?: unknown;
   };
   if (typeof body.message !== "string" || !body.message.trim()) {
     return c.json({ error: "bad_request", message: "message is required." }, 400);
@@ -782,11 +783,15 @@ app.post("/api/chat", async (c) => {
   // managed to write -- the name just replaced, for seconds or until the next
   // successful mirror. Milliseconds here; minutes of confusion without it.
   const freshProfile = await readDbProfile(resolved.address).catch(() => null);
+  const retry = Array.isArray(body.retry)
+    ? body.retry.filter((x: unknown) => typeof x === "string").map((x: string) => x.slice(0, 2_000)).slice(-5)
+    : [];
   const turn = {
     store: resolved.store,
     message: body.message.trim(),
     undoOf,
     history,
+    ...(retry.length ? { retry } : {}),
     ...(freshProfile && (freshProfile.name || freshProfile.pronouns || freshProfile.timezone)
       ? { profile: freshProfile }
       : {}),

@@ -127,6 +127,16 @@ export interface ChatTurnInput {
   /** Ids the user already undid, so a retried turn does not resurrect them. */
   undoOf?: string[];
   /**
+   * Earlier messages whose extraction failed, sent back by the client for
+   * another attempt alongside the new message. Without this a failed turn loses
+   * its memories silently: the user said something worth keeping, the model call
+   * died, and nothing retries it. The client owns this list (it survives
+   * isolates and refreshes); the server just mines it. Cleared client-side on
+   * any turn without a capture error -- success means attempted, even when the
+   * outcome is legitimately nothing to file.
+   */
+  retry?: string[];
+  /**
    * Fresh profile from the fast stores, overriding whatever the ledger holds.
    * The chain mirror lags behind saves (background write, index catch-up), so
    * without this the reply addresses the user by the name they just replaced --
@@ -170,7 +180,7 @@ export interface ChatTurn {
 export type TurnPhase = "reading" | "extracting" | "writing" | "replying";
 
 export async function takeTurn(
-  { store, message, undoOf = [], history = [], profile: profileOverride }: ChatTurnInput,
+  { store, message, undoOf = [], history = [], profile: profileOverride, retry = [] }: ChatTurnInput,
   hooks: { onDelta?: (text: string) => void; onPhase?: (phase: TurnPhase) => void } = {},
 ): Promise<ChatTurn> {
   hooks.onPhase?.("reading");
@@ -180,13 +190,20 @@ export async function takeTurn(
   // ── 1. Notice and write ─────────────────────────────────────────────────────
   // Small talk skips the slowest call entirely. needsExtraction fails open, so
   // anything that might hold a fact still goes through capture() normally.
+  // Retried messages join as background history: the live message keeps
+  // anaphora priority ("save it" means now), retries supply the missed facts.
+  const retryHistory: PriorTurn[] = retry
+    .filter((t) => typeof t === "string" && t.trim())
+    .slice(-5)
+    .map((text) => ({ role: "you" as const, text: text.trim().slice(0, 2_000) }));
+  const extractHistory = [...retryHistory, ...history];
   let extraction: Awaited<ReturnType<typeof capture>>;
   if (needsExtraction(message)) {
     hooks.onPhase?.("extracting");
     const openPromises = memories
       .filter((m) => m.type === "promise" && m.status === "open")
       .map((m) => ({ id: m.id, person: m.person, text: m.text }));
-    extraction = await capture(message, known, history, openPromises);
+    extraction = await capture(message, known, extractHistory, openPromises);
   } else {
     extraction = { candidates: [] };
   }

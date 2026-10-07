@@ -70,6 +70,20 @@ export function loadHistory(address: string | undefined): Turn[] {
   }
 }
 
+const retryKey = (address: string) => `peoplebook:retry:${address.toLowerCase()}`;
+const MAX_PENDING = 5;
+
+function loadPending(address: string | undefined): string[] {
+  if (!address) return [];
+  try {
+    const raw = localStorage.getItem(retryKey(address));
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string").slice(-MAX_PENDING) : [];
+  } catch {
+    return [];
+  }
+}
+
 export function ChatView({ onOpenBook, address }: { onOpenBook?: () => void; address?: string }) {
   const [turns, setTurns] = useState<Turn[]>(() => loadHistory(address));
   // The address often arrives after first render (whoami is async). If turns are
@@ -169,10 +183,52 @@ export function ChatView({ onOpenBook, address }: { onOpenBook?: () => void; add
       liveEdgeRef.current = true;
       setPinned(true);
 
+      // Messages whose extraction failed ride along with the next send instead of
+      // vanishing. Loaded per address like history; cleared on any clean turn.
+      // Capped so years of outage cannot bloat every prompt, deduped so a
+      // resend loop cannot file the same words twice.
+      let pending: string[] = [];
       try {
-        await streamTurn(theirs.id, { message, undoOf, history }, setTurns, controller.signal);
+        pending = loadPending(address);
+      } catch {
+        pending = [];
+      }
+      const persistPending = (next: string[]) => {
+        if (!address) return;
+        try {
+          if (next.length) localStorage.setItem(retryKey(address), JSON.stringify(next.slice(-MAX_PENDING)));
+          else localStorage.removeItem(retryKey(address));
+        } catch {
+          /* same storage grace as history */
+        }
+      };
+      try {
+        const failed = await streamTurn(
+          theirs.id,
+          { message, undoOf, history, ...(pending.length ? { retry: pending } : {}) },
+          setTurns,
+          controller.signal,
+        );
+        if (failed) {
+          // Extraction failed again: keep the backlog and add this message, so
+          // the important thing is retried alongside whatever comes next rather
+          // than dropped at the exact moment the user asked twice.
+          const next = [...pending, message].filter((m, i, a) => a.indexOf(m) === i).slice(-MAX_PENDING);
+          persistPending(next);
+        } else if (pending.length) {
+          persistPending([]);
+        }
       } catch (error) {
         if (controller.signal.aborted) return; // Stop already resolved the turn.
+        // A turn that never completed (network down, server error) queues like
+        // a failed extraction: the words were said and deserve another chance
+        // without the user remembering to repeat them.
+        try {
+          const cur = loadPending(address);
+          persistPending([...cur, message].filter((m, i, a) => a.indexOf(m) === i).slice(-MAX_PENDING));
+        } catch {
+          /* persistence is best-effort; the visible failure stands regardless */
+        }
         const detail = await apiErrorDetail(error);
         setTurns((prev) => prev.map((t) => (t.id === theirs.id ? { ...t, pending: false, failed: detail } : t)));
       } finally {
@@ -553,10 +609,11 @@ function TurnBlock({
  */
 async function streamTurn(
   turnId: string,
-  payload: { message: string; undoOf: string[]; history: { role: "you" | "assistant"; text: string }[] },
+  payload: { message: string; undoOf: string[]; history: { role: "you" | "assistant"; text: string }[]; retry?: string[] },
   setTurns: React.Dispatch<React.SetStateAction<Turn[]>>,
   signal: AbortSignal,
-): Promise<void> {
+): Promise<string | undefined> {
+  let captureError: string | undefined;
   const response = await fetch("/api/chat", {
     method: "POST",
     headers: { "content-type": "application/json", accept: "text/event-stream" },
@@ -605,6 +662,7 @@ async function streamTurn(
         // in one frame -- left the assistant saying nothing at all, with no error
         // anywhere. The server always sends the full text here, so fall back to it.
         const { type: _type, reply, ...rest } = event as { type: string; reply?: string } & Partial<Turn>;
+        if (typeof rest.captureError === "string" && rest.captureError) captureError = rest.captureError;
         setTurns((prev) =>
           prev.map((t) =>
             t.id === turnId
@@ -617,6 +675,7 @@ async function streamTurn(
       }
     }
   }
+  return captureError;
 }
 
 /** Pulls the server's own wording out of an error, rather than showing "failed". */
