@@ -43,7 +43,10 @@ export function friendlyMessage(status: number, label: string | undefined, detai
   if (status === 401 || status === 403) {
     return `The app could not authenticate with its language model${where}. Tell whoever runs this app their key needs attention -- nothing you did caused this.`;
   }
-  return `The language model did not answer${where}. Nothing was lost; try again in a moment.`;
+  // Anything here may already be queued for retry alongside the next message
+  // (client-owned pending list), so the message names that instead of asking
+  // the user to repeat themselves for an outage.
+  return `The language model did not answer${where}. Nothing was lost -- it will be retried automatically with your next message.`;
 }
 
 /**

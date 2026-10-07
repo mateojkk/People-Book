@@ -263,9 +263,13 @@ export async function capture(
       .map((c) => withRecurringDate(c, new Date()));
     return { candidates };
   } catch (error) {
+    // Raw exception text here would be JSON positions and token errors. The
+    // turn survives regardless (reply continues on existing memories); what the
+    // user needs is whether to act, and the answer is no -- the message joins
+    // the automatic retry backlog.
     return {
       candidates: [],
-      error: `Extraction failed: ${error instanceof Error ? error.message : String(error)}. Nothing was written.`,
+      error: `Missed that one -- it will be retried automatically with your next message.`,
     };
   }
 }

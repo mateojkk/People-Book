@@ -255,6 +255,7 @@ section("model errors are user-readable");
   check("auth failures blame config, not the user", /nothing you did/i.test(m401), m401.slice(0, 60));
   const m500 = friendlyMessage(500, undefined, "");
   check("unknown failures still read cleanly", !/500|undefined/.test(m500), m500.slice(0, 60));
+  check("and promise automatic retry, not user repetition", /retried automatically/i.test(m500), m500.slice(0, 80));
 }
 
 // ── A turn writes and answers ─────────────────────────────────────────────────
