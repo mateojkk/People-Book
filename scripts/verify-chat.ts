@@ -237,6 +237,26 @@ section("salvageJson fixes mechanics, never meaning");
   check("deep truncation stays undefined", !parses('{"candidates": [{"a": {"b": {"c": 1'));
 }
 
+// ── Model failures speak plainly ───────────────────────────────────────────────
+// These messages reach the chat verbatim. A status code, a model id, or a JSON
+// fragment in front of a user is a failure to translate, so each maps to what
+// happened and what to do.
+section("model errors are user-readable");
+
+{
+  const { friendlyMessage } = await import("../server/groq.js");
+  const m404 = friendlyMessage(404, "extract", '{"error":{"code":"model_not_found"}}');
+  check("a retired model says so plainly", /retired or renamed/i.test(m404) && !/404/.test(m404), m404.slice(0, 60));
+  check("and names the phase in words", /figuring out what to remember/i.test(m404));
+  const m429 = friendlyMessage(429, "reply", "try again in 4m5.376s");
+  check("rate limits name the wait, not the code", /try again in about 4m5/i.test(m429) && !/429/.test(m429), m429.slice(0, 60));
+  check("and reassure nothing was lost", /nothing was lost/i.test(m429));
+  const m401 = friendlyMessage(401, "reply", "");
+  check("auth failures blame config, not the user", /nothing you did/i.test(m401), m401.slice(0, 60));
+  const m500 = friendlyMessage(500, undefined, "");
+  check("unknown failures still read cleanly", !/500|undefined/.test(m500), m500.slice(0, 60));
+}
+
 // ── A turn writes and answers ─────────────────────────────────────────────────
 section("a turn files what was said and answers back");
 

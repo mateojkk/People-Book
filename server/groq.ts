@@ -26,6 +26,27 @@
 const BASE = process.env.GROQ_URL || "https://api.groq.com/openai/v1/chat/completions";
 
 /**
+ * What the user reads when the model call fails for good. These messages reach
+ * the chat verbatim, so they say what happened and what to do in plain language
+ * -- never a status code, a model id, or a JSON fragment. The technical detail
+ * stays in the server log, where it belongs.
+ */
+export function friendlyMessage(status: number, label: string | undefined, detail: string): string {
+  const where = label ? ` while ${label === "extract" ? "figuring out what to remember" : label === "reply" ? "writing a reply" : label}` : "";
+  if (status === 404 || /model_not_found|model_decommissioned|does not exist/i.test(detail)) {
+    return `I could not reach the language model${where} -- it looks retired or renamed on the provider's side. Nothing was lost; try again in a bit, and tell whoever runs this app the model may need updating.`;
+  }
+  if (status === 429) {
+    const wait = /try again in ([\dms.]+)/i.exec(detail)?.[1];
+    return `Too many requests right now${where}${wait ? ` -- try again in about ${wait}` : ""}. Nothing was lost; your message is still here.`;
+  }
+  if (status === 401 || status === 403) {
+    return `The app could not authenticate with its language model${where}. Tell whoever runs this app their key needs attention -- nothing you did caused this.`;
+  }
+  return `The language model did not answer${where}. Nothing was lost; try again in a moment.`;
+}
+
+/**
  * How many times to try before giving up.
  *
  * Three, not four, and bounded by the deadline below. Four attempts with the
@@ -142,9 +163,7 @@ export async function groqFetch(
 
     const outOfTime = Date.now() - startedAt >= RETRY_BUDGET_MS;
     if (!isTransient(response.status) || attempt === MAX_ATTEMPTS || outOfTime) {
-      throw new Error(
-        `Groq responded ${response.status}${options.label ? ` (${options.label})` : ""}${detail ? `: ${detail.slice(0, 300)}` : ""}`,
-      );
+      throw new Error(friendlyMessage(response.status, options.label, detail));
     }
 
     // Retry-After is the server telling us how long it wants. Preferred over our
